@@ -98,7 +98,10 @@ class TargetRectifier:
         # Specular glares are high brightness (V > 230) and low saturation (S < 45) inside black bull
         glare_mask = ((v_channel > 230) & (s_channel < 45) & (dark_mask > 0)).astype(np.uint8) * 255
         if cv2.countNonZero(glare_mask) > 10:
-            return cv2.inpaint(bgr, glare_mask, inpaintRadius=3, flags=cv2.INPAINT_NS)
+            # Dilate mask to consume anti-aliased perimeter pixels and restore solid dark ink
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+            dilated_mask = cv2.dilate(glare_mask, kernel, iterations=2)
+            return cv2.inpaint(bgr, dilated_mask, inpaintRadius=5, flags=cv2.INPAINT_TELEA)
         return bgr
 
     def _segment_bullseye_contour(self, raw_bgr: np.ndarray) -> Tuple[Optional[np.ndarray], float]:
