@@ -42,6 +42,9 @@ def generate_synthetic_demo_target(
             canvas_size=canvas_size,
             pixels_per_mm=pixels_per_mm,
             target_type=target_type,
+            include_handwriting=False,
+            include_header_text=True,
+            include_scorer_marks=False,
         )
         img = generate_cardboard_texture(cfg)
         img, center, _ = draw_standard_bullseye(img, cfg)
@@ -76,7 +79,8 @@ def run_inference_and_scoring(
     max_shots: Optional[int] = 10,
     device_str: Optional[str] = None,
     canvas_size: Optional[int] = None,
-    pixels_per_mm: Optional[float] = None
+    pixels_per_mm: Optional[float] = None,
+    redact_pii: bool = False,
 ) -> Tuple[List[ShotResult], GroupMetrics]:
     """Runs end-to-end target rectification, U-Net inference, inward scoring, and HUD generation."""
     if device_str is None:
@@ -237,7 +241,8 @@ def run_inference_and_scoring(
         pixels_per_mm=eff_pixels_per_mm,
         bullet_diameter_mm=bullet_diameter_mm,
         rings_cfg=rings_cfg,
-        rect_meta=rect_meta
+        rect_meta=rect_meta,
+        redact_pii=redact_pii,
     )
 
     out_dir = os.path.dirname(os.path.abspath(output_path))
@@ -261,6 +266,7 @@ def main():
     parser.add_argument("--device", type=str, default=None, help="Inference device: 'cuda', 'cpu', or 'mps'")
     parser.add_argument("--canvas-size", type=int, default=None, help="Override canonical canvas size (e.g. 256 for fast verification)")
     parser.add_argument("--scale", type=float, default=None, help="Override pixels_per_mm scale (e.g. 2.0 for 256x256)")
+    parser.add_argument("--redact-pii", action="store_true", default=False, help="Redact competitor margin registration info (Name, NRA#, etc.)")
 
     args = parser.parse_args()
 
@@ -276,6 +282,7 @@ def main():
         device_str=args.device,
         canvas_size=args.canvas_size,
         pixels_per_mm=args.scale,
+        redact_pii=args.redact_pii,
     )
 
 

@@ -21,7 +21,8 @@ def render_scoring_inspection_overlay(
     pixels_per_mm: float,
     bullet_diameter_mm: float = 5.69,
     rings_cfg: Optional[TargetRingsConfig] = None,
-    rect_meta: Optional[RectificationResult] = None
+    rect_meta: Optional[RectificationResult] = None,
+    redact_pii: bool = False
 ) -> np.ndarray:
     """Renders composite inspection image: canonical target on left, scoreboard HUD on right."""
     if rings_cfg is None:
@@ -31,6 +32,26 @@ def render_scoring_inspection_overlay(
     h, w, _ = canvas.shape
     bull_x, bull_y = int(round(bullseye_center[0])), int(round(bullseye_center[1]))
     bullet_radius_px = max(1, int(round((bullet_diameter_mm / 2.0) * pixels_per_mm)))
+
+    if redact_pii:
+        # Mask out outer margin registration zones where competitor PII is written
+        margin_mask = np.zeros((h, w), dtype=np.uint8)
+        rings_table = rings_cfg.get_rings_table()
+        outer_margin_rad = int(round(rings_table[-1][1] * pixels_per_mm + 12.0 * (pixels_per_mm / 4.0)))
+        cv2.circle(margin_mask, (bull_x, bull_y), outer_margin_rad, 255, -1)
+        header_h = max(28, int(round(bull_y - outer_margin_rad + 8)))
+        if header_h > 0:
+            margin_mask[:header_h, :] = 0
+
+        blurred_canvas = cv2.GaussianBlur(canvas, (45, 45), 25.0)
+        pii_zone = (margin_mask == 0)[:, :, np.newaxis]
+        canvas = np.where(pii_zone, blurred_canvas, canvas)
+
+        badge_y = max(18, int(round(header_h * 0.6)))
+        cv2.putText(
+            canvas, "[COMPETITOR REGISTRATION REDACTED]", (18, badge_y),
+            cv2.FONT_HERSHEY_SIMPLEX, max(0.32, 0.38 * (h / 512.0)), (130, 130, 140), 1, cv2.LINE_AA
+        )
 
     # Ensure bullet heatmap matches canvas dimensions
     if bullet_heatmap.shape[:2] != (h, w):

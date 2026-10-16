@@ -19,6 +19,9 @@ class TargetConfig:
     grease_ring_width_mm: float = 0.45
     cardboard_base_bgr: Tuple[int, int, int] = (145, 180, 215)
     target_type: str = "B-2"             # Official NRA "B-2" or "B-3"
+    include_handwriting: bool = True     # Simulate competitor handwriting (name, NRA#, relay)
+    include_header_text: bool = True     # Simulate official printed NRA target headers
+    include_scorer_marks: bool = True    # Simulate scorer circled shots, numbers & checkmarks
 
 
 @dataclass

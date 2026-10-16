@@ -14,7 +14,7 @@ import cv2
 import torch
 
 from target_scorer.geometry.rectifier import RectificationResult, TargetRectifier
-from target_scorer.config import TargetRingsConfig
+from target_scorer.config import TargetConfig, TargetRingsConfig
 from target_scorer.infer import generate_synthetic_demo_target, run_inference_and_scoring
 from target_scorer.metrology.peaks import extract_subpixel_peaks
 from target_scorer.metrology.scoring import (
@@ -24,6 +24,7 @@ from target_scorer.metrology.scoring import (
 from target_scorer.metrology.visualization import render_scoring_inspection_overlay
 from target_scorer.models.loss import AdaptiveWingLoss
 from target_scorer.models.unet import HighResHeatmapUNet
+from target_scorer.synthetic.generator import generate_synthetic_target_sample
 from target_scorer.train import calculate_localization_metrics
 
 
@@ -421,6 +422,96 @@ class TestLowResEndToEndPipeline(unittest.TestCase):
                 image_path="this_image_definitely_does_not_exist_at_all.png",
                 checkpoint_path="weights/target_scoring_hrnet_512_best.pt"
             )
+
+
+class TestTextAndHandwritingInvariance(unittest.TestCase):
+    """Stage 5: Text, Competitor Handwriting, and Scorer Annotations Invariance Tests."""
+
+    def test_text_01_procedural_handwriting_synthesis(self):
+        """TEXT-01: Verifies handwriting, headers, and scorer circles are stamped with 0.0 ground truth heatmap."""
+        cfg = TargetConfig(
+            canvas_size=256,
+            pixels_per_mm=2.0,
+            include_handwriting=True,
+            include_header_text=True,
+            include_scorer_marks=True,
+        )
+        canvas, heatmap, annotations, center, radii = generate_synthetic_target_sample(
+            config=cfg, num_singles=3, num_doubles=1, num_keyholes=0
+        )
+        self.assertEqual(len(annotations), 5)
+        self.assertEqual(canvas.shape, (256, 256, 3))
+        self.assertEqual(heatmap.shape, (256, 256))
+        # Check that top margin (where header text and name fields are written) has strictly 0.0 heatmap
+        self.assertAlmostEqual(float(np.max(heatmap[:20, :])), 0.0, delta=1e-5)
+
+    def test_text_02_rectification_with_overlapping_handwriting(self):
+        """TEXT-02: Handwriting strokes crossing into the 7-ring do not skew Fitzgibbon ellipse fitting."""
+        rectifier = TargetRectifier(target_type="B-2", canonical_dim=256, pixels_per_mm=2.0)
+        img_size = 600
+        raw_img = np.ones((img_size, img_size, 3), dtype=np.uint8) * np.array([145, 180, 215], dtype=np.uint8)
+        cx, cy = img_size / 2.0, img_size / 2.0
+        a = 38.989 * 2.5
+        b = a * math.cos(math.radians(20.0))
+        cv2.ellipse(raw_img, (int(round(cx)), int(round(cy))), (int(round(a)), int(round(b))), 0, 0, 360, (30, 30, 35), -1, cv2.LINE_AA)
+
+        # Draw heavy handwriting crossing the edge of the aiming black in dark blue and graphite ink
+        cv2.putText(raw_img, "RELAY 2 - J. DOE #10948", (int(cx - a * 0.9), int(cy - b * 0.8)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (130, 40, 20), 2, cv2.LINE_AA)
+        cv2.putText(raw_img, "MATCH 3 - 50 FT", (int(cx - a * 0.5), int(cy + b * 0.9)), cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 0.8, (30, 30, 35), 2, cv2.LINE_AA)
+
+        result = rectifier.process_raw_image(raw_img)
+        self.assertFalse(result.is_fallback)
+        self.assertAlmostEqual(result.tilt_angle_deg, 20.0, delta=4.5)
+        self.assertGreaterEqual(result.circularity, 0.90)
+
+    def test_text_03_scorer_circles_do_not_duplicate_shots(self):
+        """TEXT-03: Hand-drawn circles around bullet holes do not create false positive or duplicate peaks."""
+        canvas_dim = 120
+        hmap = np.zeros((canvas_dim, canvas_dim), dtype=np.float32)
+        y, x = np.mgrid[0:canvas_dim, 0:canvas_dim]
+        # Authentic bullet hole Gaussian peak at (60, 60)
+        hmap = np.exp(-((x - 60.0)**2 + (y - 60.0)**2) / (2.0 * 2.0**2)).astype(np.float32)
+
+        # Simulated hand-drawn pen circle ring in background
+        circle_dist = np.abs(np.sqrt((x - 60.0)**2 + (y - 60.0)**2) - 15.0)
+        circle_noise = 0.20 * np.exp(-(circle_dist**2) / (2.0 * 1.5**2))
+        combined = np.maximum(hmap, circle_noise.astype(np.float32))
+
+        peaks = extract_subpixel_peaks(combined, threshold=0.45, min_distance_px=8.0, max_peaks=10)
+        self.assertEqual(len(peaks), 1)
+        self.assertAlmostEqual(peaks[0][0], 60.0, delta=0.05)
+        self.assertAlmostEqual(peaks[0][1], 60.0, delta=0.05)
+
+    def test_text_04_pii_redaction_overlay(self):
+        """TEXT-04: Verifies --redact-pii masks margin competitor registration zones while preserving bullseye."""
+        canvas_size = 256
+        pixels_per_mm = 2.0
+        rings_cfg = TargetRingsConfig(target_type="B-2")
+        img_canonical, bull_center = generate_synthetic_demo_target(
+            canvas_size=canvas_size, pixels_per_mm=pixels_per_mm, target_type="B-2"
+        )
+        cv2.putText(img_canonical, "NAME: JOHN DOE", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (20, 20, 25), 1)
+
+        hmap = np.zeros((canvas_size, canvas_size), dtype=np.float32)
+        shot_results, metrics = score_target_group(
+            shot_peaks=[(128.0, 128.0, 0.95)],
+            bullseye_peak=bull_center,
+            pixels_per_mm=pixels_per_mm,
+            rings_cfg=rings_cfg
+        )
+
+        overlay_redacted = render_scoring_inspection_overlay(
+            image_bgr=img_canonical,
+            bullet_heatmap=hmap,
+            shot_results=shot_results,
+            bullseye_center=bull_center,
+            metrics=metrics,
+            pixels_per_mm=pixels_per_mm,
+            rings_cfg=rings_cfg,
+            redact_pii=True
+        )
+
+        self.assertEqual(overlay_redacted.shape, (256, 256 + 390, 3))
 
 
 if __name__ == "__main__":

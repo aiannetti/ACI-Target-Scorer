@@ -124,16 +124,19 @@ class TargetRectifier:
         # Segment aiming black using Otsu thresholding with adaptive fallback
         _, otsu_thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
-        # Morphological opening and closing to bridge bullet holes inside aiming black
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-        closed_mask = cv2.morphologyEx(otsu_thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
-        opened_mask = cv2.morphologyEx(closed_mask, cv2.MORPH_OPEN, kernel, iterations=1)
+        # 1. Morphological opening with 5x5 kernel severs thin handwriting/pen strokes (< 5 px wide)
+        # before closing, preventing handwriting from bridging to the bullseye contour
+        open_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        opened_mask = cv2.morphologyEx(otsu_thresh, cv2.MORPH_OPEN, open_kernel, iterations=1)
+        # 2. Morphological closing to bridge bullet holes inside the solid aiming black
+        close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+        processed_mask = cv2.morphologyEx(opened_mask, cv2.MORPH_CLOSE, close_kernel, iterations=2)
 
         total_pixels = work_w * work_h
         min_area = total_pixels * 0.012  # At least 1.2% of frame
         max_area = total_pixels * 0.700  # At most 70% of frame
 
-        contours, _ = cv2.findContours(opened_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        contours, _ = cv2.findContours(processed_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         best_contour = None
         best_score = -1.0
 
@@ -170,7 +173,8 @@ class TargetRectifier:
                 blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                 cv2.THRESH_BINARY_INV, 41, 7
             )
-            adapt_closed = cv2.morphologyEx(adapt, cv2.MORPH_CLOSE, kernel, iterations=2)
+            adapt_opened = cv2.morphologyEx(adapt, cv2.MORPH_OPEN, open_kernel, iterations=1)
+            adapt_closed = cv2.morphologyEx(adapt_opened, cv2.MORPH_CLOSE, close_kernel, iterations=2)
             contours_adapt, _ = cv2.findContours(adapt_closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
             for c in contours_adapt:
                 area = cv2.contourArea(c)

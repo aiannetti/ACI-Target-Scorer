@@ -221,6 +221,185 @@ def generate_ground_truth_heatmap(
     return np.clip(heatmap, 0.0, 1.0)
 
 
+def get_random_ink_style() -> Tuple[Tuple[int, int, int], int, str]:
+    """Returns random authentic pen/pencil style: (bgr_color, thickness, medium_type)."""
+    medium = random.choice(["red", "blue", "black", "pencil"])
+    if medium == "red":
+        color = (random.randint(15, 30), random.randint(15, 35), random.randint(180, 220))
+        thickness = 1
+    elif medium == "blue":
+        color = (random.randint(120, 160), random.randint(35, 60), random.randint(15, 30))
+        thickness = 1
+    elif medium == "black":
+        color = (random.randint(25, 35), random.randint(25, 35), random.randint(25, 35))
+        thickness = random.choice([1, 2])
+    else:  # graphite pencil
+        color = (random.randint(75, 95), random.randint(78, 98), random.randint(80, 100))
+        thickness = 1
+    return color, thickness, medium
+
+
+def render_printed_target_header(canvas: np.ndarray, config: TargetConfig) -> np.ndarray:
+    """Renders authentic official NRA printed target header and registration fields."""
+    h, w = config.canvas_size, config.canvas_size
+    sf = max(0.5, config.canvas_size / 512.0)
+    top_y = int(round(18 * sf))
+
+    bull_radius_px = 38.989 * config.pixels_per_mm
+    margin_top = (h / 2.0) - bull_radius_px
+    if margin_top < 30 * sf:
+        return canvas
+
+    header_font = cv2.FONT_HERSHEY_SIMPLEX
+    font_s = 0.36 * sf
+    color = (45, 45, 50)
+
+    target_title = (
+        "OFFICIAL 50 FT. SLOW FIRE PISTOL TARGET"
+        if config.target_type.upper() == "B-2"
+        else "OFFICIAL 50 FT. TIMED & RAPID FIRE PISTOL TARGET"
+    )
+    cv2.putText(canvas, target_title, (int(round(20 * sf)), top_y), header_font, font_s, color, 1, cv2.LINE_AA)
+
+    fields_y = int(round(top_y + 15 * sf))
+    field_text = "MATCH NO. ______  STAGE ______  RELAY ______  NAME ____________________  NRA# ________"
+    cv2.putText(canvas, field_text, (int(round(20 * sf)), fields_y), header_font, font_s * 0.85, (70, 70, 75), 1, cv2.LINE_AA)
+    return canvas
+
+
+def render_procedural_handwriting(
+    canvas: np.ndarray,
+    config: TargetConfig,
+    bullseye_center: Tuple[float, float],
+    ring_radii_px: Dict[str, float]
+) -> np.ndarray:
+    """Renders competitor handwriting (names, NRA numbers, relay details, dates, calibers)."""
+    h, w = config.canvas_size, config.canvas_size
+    sf = max(0.5, config.canvas_size / 512.0)
+    outer_key = "6" if config.target_type.upper() == "B-3" else "4"
+    outer_r = ring_radii_px.get(outer_key, config.canvas_size * 0.45)
+
+    names = ["J. Miller", "D. Reynolds", "T. Vance", "Rob Davis", "S. Kowalski", "W. H. Smith", "M. Cooper", "B. Anderson"]
+    nra_nums = [f"NRA #{random.randint(100000, 999999)}", f"NRA {random.randint(1000000, 9999999)}", f"#{random.randint(10000, 99999)}"]
+    match_details = [f"M-{random.randint(1, 5)} R-{random.randint(1, 4)}", f"Match {random.randint(1, 8)}", f"Stage {random.randint(1, 3)}"]
+    dates = ["10/16/26", "Oct 16", "10-16", "2026-10", "11/04/26"]
+    calibers = [".22 LR", ".22 Cal", "SW 41", "Pistol .22", "Ruger MK4", "Hammerli"]
+
+    entries = [
+        random.choice(names),
+        random.choice(nra_nums),
+        random.choice(match_details),
+        random.choice(dates),
+        random.choice(calibers)
+    ]
+    random.shuffle(entries)
+    chosen_entries = entries[:random.randint(2, 4)]
+
+    color, thickness, _ = get_random_ink_style()
+    font = cv2.FONT_HERSHEY_SCRIPT_SIMPLEX if random.random() < 0.60 else cv2.FONT_HERSHEY_SIMPLEX
+
+    cx, cy = bullseye_center
+    margin_candidates = [
+        (int(round(250 * sf)), int(round(33 * sf))),
+        (int(round(35 * sf)), int(round(33 * sf))),
+        (int(round(w - 180 * sf)), int(round(33 * sf))),
+        (int(round(30 * sf)), int(round(h - 22 * sf))),
+        (int(round(w - 170 * sf)), int(round(h - 22 * sf))),
+        (int(round(cx + outer_r * 0.70)), int(round(cy - outer_r * 0.75))),
+        (int(round(cx - outer_r * 0.85)), int(round(cy + outer_r * 0.70))),
+    ]
+    random.shuffle(margin_candidates)
+
+    for i, text in enumerate(chosen_entries):
+        if i >= len(margin_candidates):
+            break
+        pos_x, pos_y = margin_candidates[i]
+        pos_x = max(10, min(w - 140, pos_x))
+        pos_y = max(20, min(h - 10, pos_y))
+        font_scale = random.uniform(0.38, 0.52) * sf
+        cv2.putText(canvas, text, (pos_x, pos_y), font, font_scale, color, thickness, cv2.LINE_AA)
+
+    return canvas
+
+
+def render_scorer_annotations(
+    canvas: np.ndarray,
+    annotations: List[ShotAnnotation],
+    config: TargetConfig,
+    bullseye_center: Tuple[float, float],
+    ring_radii_px: Dict[str, float]
+) -> np.ndarray:
+    """
+    Renders realistic range officer / scorer markings:
+      1. Hand-drawn circles around bullet holes in Red, Blue, Black, or Graphite Pencil.
+      2. Written score values ("10", "9", "X", "8") adjacent to bullet holes.
+      3. Scorer score tallies in margins.
+    """
+    if not annotations:
+        return canvas
+
+    sf = max(0.5, config.canvas_size / 512.0)
+    r_bullet_px = (config.bullet_diameter_mm / 2.0) * config.pixels_per_mm
+
+    # 1. Circle a subset of bullet holes (simulates range officer scoring overlay check)
+    num_to_circle = max(1, random.randint(len(annotations) // 4, max(1, len(annotations) // 2)))
+    shots_to_circle = random.sample(annotations, min(num_to_circle, len(annotations)))
+
+    for shot in shots_to_circle:
+        color, thickness, _ = get_random_ink_style()
+        cx, cy = shot.center_x, shot.center_y
+
+        circle_radius = r_bullet_px * random.uniform(1.30, 2.10)
+        rx = int(round(circle_radius * random.uniform(0.90, 1.18)))
+        ry = int(round(circle_radius * random.uniform(0.88, 1.15)))
+        ox = int(round(cx + random.uniform(-r_bullet_px * 0.25, r_bullet_px * 0.25)))
+        oy = int(round(cy + random.uniform(-r_bullet_px * 0.25, r_bullet_px * 0.25)))
+        angle = random.uniform(-40.0, 40.0)
+        end_angle = random.uniform(365.0, 395.0)
+
+        cv2.ellipse(canvas, (ox, oy), (rx, ry), angle, 0, end_angle, color, thickness, cv2.LINE_AA)
+
+        # 50% chance of adjacent ring score notation
+        if random.random() < 0.50:
+            dx = cx - bullseye_center[0]
+            dy = cy - bullseye_center[1]
+            dist_mm = math.hypot(dx, dy) / config.pixels_per_mm
+            if dist_mm <= 12.0:
+                score_str = "X" if dist_mm <= 6.0 else "10"
+            elif dist_mm <= 20.0:
+                score_str = "9"
+            elif dist_mm <= 30.0:
+                score_str = "8"
+            elif dist_mm <= 40.0:
+                score_str = "7"
+            else:
+                score_str = "6"
+
+            offset_ang = random.uniform(0, 2 * math.pi)
+            txt_x = int(round(cx + (rx + 6.0 * sf) * math.cos(offset_ang)))
+            txt_y = int(round(cy + (ry + 6.0 * sf) * math.sin(offset_ang)))
+            txt_x = max(8, min(config.canvas_size - 30, txt_x))
+            txt_y = max(16, min(config.canvas_size - 8, txt_y))
+            cv2.putText(canvas, score_str, (txt_x, txt_y), cv2.FONT_HERSHEY_SIMPLEX, 0.40 * sf, color, thickness, cv2.LINE_AA)
+
+    # 2. Scorer total tally in margin (e.g. "94-2X", "96-3X", "48-1X")
+    if random.random() < 0.65:
+        tally_color, tally_thick, _ = get_random_ink_style()
+        total_pts = random.randint(88, 99)
+        x_pts = random.randint(1, 5)
+        tally_text = f"{total_pts}-{x_pts}X"
+
+        corner_x = int(round(config.canvas_size * random.choice([0.08, 0.72])))
+        corner_y = int(round(config.canvas_size * random.choice([0.88, 0.94])))
+        cv2.putText(canvas, tally_text, (corner_x, corner_y), cv2.FONT_HERSHEY_SIMPLEX, 0.48 * sf, tally_color, tally_thick, cv2.LINE_AA)
+
+        if random.random() < 0.5:
+            init_text = random.choice(["OK", "SC", "R.O.", "MK", "CK"])
+            cv2.putText(canvas, init_text, (corner_x + int(round(65 * sf)), corner_y), cv2.FONT_HERSHEY_SIMPLEX, 0.38 * sf, tally_color, 1, cv2.LINE_AA)
+
+    return canvas
+
+
 def generate_synthetic_target_sample(
     config: Optional[TargetConfig] = None,
     num_singles: int = 5,
@@ -233,6 +412,13 @@ def generate_synthetic_target_sample(
 
     canvas = generate_cardboard_texture(config)
     canvas, bullseye_center, ring_radii_px = draw_standard_bullseye(canvas, config)
+
+    if config.include_header_text:
+        canvas = render_printed_target_header(canvas, config)
+
+    if config.include_handwriting:
+        canvas = render_procedural_handwriting(canvas, config, bullseye_center, ring_radii_px)
+
     annotations: List[ShotAnnotation] = []
     bull_x, bull_y = bullseye_center
     outer_key = "6" if config.target_type.upper() == "B-3" else "5"
@@ -252,6 +438,9 @@ def generate_synthetic_target_sample(
         annotations.extend(stamp_double_shot(canvas, sample_shot_position(), config))
     for _ in range(num_keyholes):
         annotations.append(stamp_keyhole_shot(canvas, sample_shot_position(), config))
+
+    if config.include_scorer_marks:
+        canvas = render_scorer_annotations(canvas, annotations, config, bullseye_center, ring_radii_px)
 
     heatmap = generate_ground_truth_heatmap(annotations, config)
     return canvas, heatmap, annotations, bullseye_center, ring_radii_px
