@@ -37,6 +37,7 @@ def run_colab_training(
     checkpoint_dest: Optional[str] = None,
     scorecard_dest: Optional[str] = None,
     timeout_seconds: float = 3600.0,
+    sigma: Optional[float] = None,
 ) -> str:
     """
     End-to-end cloud training orchestration using Google Colab CLI:
@@ -115,11 +116,12 @@ def run_colab_training(
 
         # 5. Execute training with mixed-precision (AMP)
         print(f"[5/6] Executing {canvas_size}x{canvas_size} training on NVIDIA {gpu}...")
+        sigma_arg = f"    '--sigma', '{sigma}',\n" if sigma is not None else ""
         train_script = (
             "import subprocess, sys, os\n"
             "os.makedirs('/content/target_scorer/weights', exist_ok=True)\n"
             f"cmd = [\n"
-            f"    sys.executable, '-m', 'target_scorer.train',\n"
+            f"    sys.executable, '-u', '-m', 'target_scorer.train',\n"
             f"    '--canvas-size', '{canvas_size}',\n"
             f"    '--scale', '{pixels_per_mm}',\n"
             f"    '--epochs', '{epochs}',\n"
@@ -127,28 +129,43 @@ def run_colab_training(
             f"    '--train-samples', '{train_samples_per_epoch}',\n"
             f"    '--val-samples', '{val_samples_per_epoch}',\n"
             f"    '--lr', '{learning_rate}',\n"
+            f"{sigma_arg}"
             f"    '--checkpoint', '/content/target_scorer/weights/target_scoring_hrnet_{canvas_size}_best.pt',\n"
             f"    '--amp',\n"
             f"]\n"
-            "res = subprocess.run(cmd)\n"
-            "if res.returncode != 0:\n"
-            "    sys.exit(res.returncode)\n"
+            "proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)\n"
+            "for line in proc.stdout:\n"
+            "    print(line, end='', flush=True)\n"
+            "proc.wait()\n"
+            "if proc.returncode != 0:\n"
+            "    sys.exit(proc.returncode)\n"
             "# Generate scorecard\n"
             f"infer_cmd = [\n"
-            f"    sys.executable, '-m', 'target_scorer.infer',\n"
+            f"    sys.executable, '-u', '-m', 'target_scorer.infer',\n"
             f"    '--checkpoint', '/content/target_scorer/weights/target_scoring_hrnet_{canvas_size}_best.pt',\n"
             f"    '--canvas-size', '{canvas_size}',\n"
             f"    '--scale', '{pixels_per_mm}',\n"
+            f"    '--threshold', '0.35',\n"
             f"    '--output', '/content/target_scorer/colab_inspection_{canvas_size}.png',\n"
             f"]\n"
-            "subprocess.run(infer_cmd)\n"
+            "infer_proc = subprocess.Popen(infer_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)\n"
+            "for line in infer_proc.stdout:\n"
+            "    print(line, end='', flush=True)\n"
+            "infer_proc.wait()\n"
         )
         proc_train = subprocess.Popen(
             [colab_bin, "exec", "-s", session_name, "--timeout", str(timeout_seconds)],
             stdin=subprocess.PIPE,
-            text=True
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
         )
-        proc_train.communicate(input=train_script)
+        proc_train.stdin.write(train_script)
+        proc_train.stdin.close()
+        for line in proc_train.stdout:
+            print(line, end='', flush=True)
+        proc_train.wait()
         if proc_train.returncode != 0:
             raise RuntimeError(f"Training failed on Colab VM with code {proc_train.returncode}.")
 
@@ -192,6 +209,7 @@ def main():
     parser.add_argument("--gpu", type=str, default="A100", choices=["A100", "T4", "L4"], help="Cloud GPU type (default: A100)")
     parser.add_argument("--session", type=str, default=None, help="Custom Colab session name")
     parser.add_argument("--checkpoint", type=str, default=None, help="Local destination path for trained checkpoint")
+    parser.add_argument("--sigma", type=float, default=None, help="Gaussian heatmap sigma in pixels (e.g. 3.2)")
     parser.add_argument("--timeout", type=float, default=3600.0, help="Maximum execution timeout in seconds")
 
     args = parser.parse_args()
@@ -208,6 +226,7 @@ def main():
         session_name=args.session,
         checkpoint_dest=args.checkpoint,
         timeout_seconds=args.timeout,
+        sigma=args.sigma,
     )
 
 

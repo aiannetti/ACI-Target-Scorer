@@ -176,6 +176,7 @@ def run_training(
     checkpoint_path: str = "target_scoring_hrnet_best.pt",
     use_amp: Optional[bool] = None,
     num_workers: int = 2,
+    sigma: Optional[float] = None,
 ) -> str:
     """Initializes and runs the full end-to-end training and evaluation pipeline."""
     if canvas_size % 8 != 0:
@@ -200,7 +201,10 @@ def run_training(
     else:
         effective_amp = use_amp and has_tensor_cores
 
-    scaled_sigma = max(1.8, 2.5 * (pixels_per_mm / 4.0))
+    if sigma is not None:
+        scaled_sigma = float(sigma)
+    else:
+        scaled_sigma = max(1.8, 2.5 * (pixels_per_mm / 4.0))
 
     config = TrainConfig(
         canvas_size=canvas_size,
@@ -290,7 +294,8 @@ def run_training(
             f"Train Loss (A-Wing): {train_loss:.5f} | "
             f"Val Loss: {val_loss:.5f} | "
             f"Val Sub-pixel MRE: {val_mre_mm:.3f} mm | "
-            f"Match Rate: {match_rate:.1f}%"
+            f"Match Rate: {match_rate:.1f}%",
+            flush=True
         )
 
         if val_mre_mm < best_mre and val_mre_mm < 900.0:
@@ -302,11 +307,11 @@ def run_training(
                 "best_mre_mm": best_mre,
                 "config": config,
             }, checkpoint_path)
-            print(f"  --> Saved new best checkpoint to '{checkpoint_path}' (MRE: {best_mre:.3f} mm)")
+            print(f"  --> Saved new best checkpoint to '{checkpoint_path}' (MRE: {best_mre:.3f} mm)", flush=True)
 
-    print("=" * 72)
-    print(f"[✓] Training complete. Optimal checkpoint: {checkpoint_path}")
-    print(f"[✓] Peak accuracy achieved: {best_mre:.3f} mm sub-pixel error.")
+    print("=" * 72, flush=True)
+    print(f"[✓] Training complete. Optimal checkpoint: {checkpoint_path}", flush=True)
+    print(f"[✓] Peak accuracy achieved: {best_mre:.3f} mm sub-pixel error.", flush=True)
     return checkpoint_path
 
 
@@ -321,6 +326,7 @@ def main():
     parser.add_argument("--val-samples", type=int, default=50, help="Validation samples per epoch (default: 50)")
     parser.add_argument("--checkpoint", type=str, default="target_scoring_hrnet_best.pt", help="Path to save best model checkpoint")
     parser.add_argument("--workers", type=int, default=2, help="Number of background CPU worker processes for data loading (default: 2)")
+    parser.add_argument("--sigma", type=float, default=None, help="Gaussian heatmap sigma in pixels (default: scaled from px/mm)")
     parser.add_argument("--amp", action="store_true", default=True, help="Enable automatic mixed precision (AMP)")
     parser.add_argument("--no-amp", dest="amp", action="store_false", help="Disable automatic mixed precision")
 
@@ -337,6 +343,7 @@ def main():
         checkpoint_path=args.checkpoint,
         use_amp=args.amp,
         num_workers=args.workers,
+        sigma=args.sigma,
     )
 
 
