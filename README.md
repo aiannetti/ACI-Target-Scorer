@@ -77,13 +77,19 @@ target_scorer/
 ├── tests/
 │   ├── __init__.py
 │   ├── test_low_res_metrology.py # Comprehensive low-res metrology test battery
-│   └── test_camera_angles.py     # Oblique camera tilt stress test suite
+│   ├── test_camera_angles.py     # Oblique camera tilt stress test suite
+│   └── test_benchmark_low_res.py # Phase 3 100-target procedural statistical benchmark
+├── scripts/
+│   └── generate_benchmark_visuals.py # Standalone visual inspection panel generator
 ├── weights/
 │   └── target_scoring_hrnet_best.pt  # PyTorch model checkpoint
 ├── docs/
 │   ├── Camera_Independence_Plan.md
 │   ├── target_scoring_system_context_document.md
-│   └── target_scoring_testing_plan.md
+│   ├── target_scoring_testing_plan.md
+│   └── benchmarks/               # Visual benchmark inspection reports & assets
+│       ├── visual_benchmark_inspection_report.md
+│       └── assets/
 ├── samples/                      # Reference synthetic targets and diagnostics
 ├── pyproject.toml                # Standard PEP 517/518 build configuration
 └── .gitignore
