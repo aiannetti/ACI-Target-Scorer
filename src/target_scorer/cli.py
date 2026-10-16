@@ -7,6 +7,7 @@ import sys
 
 from target_scorer.infer import main as infer_main
 from target_scorer.train import main as train_main
+from target_scorer.colab_runner import main as colab_main
 
 
 def rectify_cli():
@@ -53,6 +54,7 @@ def main():
     subparsers = parser.add_subparsers(dest="subcommand", help="Available commands")
     subparsers.add_parser("infer", help="Run shot detection, inward scoring, and scorecard rendering")
     subparsers.add_parser("train", help="Run procedural synthetic training pipeline")
+    subparsers.add_parser("colab-train", help="Run cloud GPU training via Google Colab CLI (A100/T4)")
     subparsers.add_parser("rectify", help="Run standalone geometric rectification")
 
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
@@ -67,6 +69,9 @@ def main():
     elif subcommand == "train":
         sys.argv = [sys.argv[0]] + sys.argv[2:]
         train_main()
+    elif subcommand == "colab-train":
+        sys.argv = [sys.argv[0]] + sys.argv[2:]
+        colab_main()
     elif subcommand == "rectify":
         rectify_cli()
     else:
