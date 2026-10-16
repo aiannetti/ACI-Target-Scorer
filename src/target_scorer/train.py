@@ -151,6 +151,7 @@ def run_training(
     val_samples_per_epoch: int = 50,
     checkpoint_path: str = "target_scoring_hrnet_best.pt",
     use_amp: bool = True,
+    num_workers: int = 2,
 ) -> str:
     """Initializes and runs the full end-to-end training and evaluation pipeline."""
     config = TrainConfig(
@@ -161,8 +162,8 @@ def run_training(
         batch_size=batch_size,
         epochs=epochs,
         learning_rate=learning_rate,
-        peak_threshold=0.45,
-        num_workers=2,
+        peak_threshold=0.40,
+        num_workers=num_workers,
         pin_memory=True,
         use_amp=use_amp,
     )
@@ -268,6 +269,7 @@ def main():
     parser.add_argument("--train-samples", type=int, default=400, help="Procedural training samples per epoch (default: 400)")
     parser.add_argument("--val-samples", type=int, default=50, help="Validation samples per epoch (default: 50)")
     parser.add_argument("--checkpoint", type=str, default="target_scoring_hrnet_best.pt", help="Path to save best model checkpoint")
+    parser.add_argument("--workers", type=int, default=2, help="Number of background CPU worker processes for data loading (default: 2)")
     parser.add_argument("--amp", action="store_true", default=True, help="Enable automatic mixed precision (AMP)")
     parser.add_argument("--no-amp", dest="amp", action="store_false", help="Disable automatic mixed precision")
 
@@ -283,6 +285,7 @@ def main():
         val_samples_per_epoch=args.val_samples,
         checkpoint_path=args.checkpoint,
         use_amp=args.amp,
+        num_workers=args.workers,
     )
 
 
