@@ -97,37 +97,45 @@ def render_scoring_inspection_overlay(
     hud = np.zeros((h, hud_width, 3), dtype=np.uint8)
     hud[:] = (24, 25, 28)
 
+    sf = max(0.5, min(1.0, h / 512.0))
+
     target_name = f"NRA {rings_cfg.target_type.upper()} (50ft {'Slow' if rings_cfg.target_type.upper() == 'B-2' else 'Timed/Rapid'})"
-    cv2.rectangle(hud, (0, 0), (hud_width, 64), (36, 38, 44), -1)
-    cv2.putText(hud, target_name, (18, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 215, 255), 2, cv2.LINE_AA)
+    hdr_h = int(round(64 * sf))
+    cv2.rectangle(hud, (0, 0), (hud_width, hdr_h), (36, 38, 44), -1)
+    cv2.putText(hud, target_name, (18, int(round(26 * sf))), cv2.FONT_HERSHEY_SIMPLEX, 0.52 * sf, (0, 215, 255), max(1, int(round(2 * sf))), cv2.LINE_AA)
 
     if rect_meta is not None:
         sub_info = f"Tilt: {rect_meta.tilt_angle_deg:.1f} deg | Calib: {pixels_per_mm:.1f} px/mm | Blur: {rect_meta.blur_metric:.0f}"
     else:
         sub_info = f"Distance: 50.0 ft ({metrics.target_distance_yards:.1f} yd) | Cal: {bullet_diameter_mm:.2f}mm"
-    cv2.putText(hud, sub_info, (18, 48), cv2.FONT_HERSHEY_SIMPLEX, 0.34, (160, 160, 170), 1, cv2.LINE_AA)
+    cv2.putText(hud, sub_info, (18, int(round(48 * sf))), cv2.FONT_HERSHEY_SIMPLEX, max(0.30, 0.34 * sf), (160, 160, 170), 1, cv2.LINE_AA)
 
     # Score Summary Banner
-    cv2.rectangle(hud, (16, 75), (hud_width - 16, 145), (32, 34, 40), -1)
-    cv2.rectangle(hud, (16, 75), (hud_width - 16, 145), (60, 65, 75), 1)
+    b_top = int(round(75 * sf))
+    b_bot = int(round(145 * sf))
+    cv2.rectangle(hud, (16, b_top), (hud_width - 16, b_bot), (32, 34, 40), -1)
+    cv2.rectangle(hud, (16, b_top), (hud_width - 16, b_bot), (60, 65, 75), 1)
 
     score_str = f"{metrics.total_score} - {metrics.x_count}X"
-    cv2.putText(hud, "TOTAL SCORE", (30, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (180, 180, 190), 1, cv2.LINE_AA)
-    cv2.putText(hud, score_str, (30, 132), cv2.FONT_HERSHEY_SIMPLEX, 1.15, (0, 255, 120), 2, cv2.LINE_AA)
+    cv2.putText(hud, "TOTAL SCORE", (30, int(round(95 * sf))), cv2.FONT_HERSHEY_SIMPLEX, max(0.32, 0.40 * sf), (180, 180, 190), 1, cv2.LINE_AA)
+    cv2.putText(hud, score_str, (30, int(round(132 * sf))), cv2.FONT_HERSHEY_SIMPLEX, max(0.65, 1.15 * sf), (0, 255, 120), max(1, int(round(2 * sf))), cv2.LINE_AA)
 
     max_str = f"/ {metrics.max_possible_score}"
-    cv2.putText(hud, max_str, (215, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.60, (140, 140, 150), 1, cv2.LINE_AA)
+    max_x = int(round(170 + 45 * sf))
+    cv2.putText(hud, max_str, (max_x, int(round(130 * sf))), cv2.FONT_HERSHEY_SIMPLEX, max(0.42, 0.60 * sf), (140, 140, 150), 1, cv2.LINE_AA)
 
     # Ballistic Group Statistics block
-    y_pos = 172
-    cv2.putText(hud, "BALLISTIC GROUP METRICS", (18, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 215, 255), 1, cv2.LINE_AA)
-    cv2.line(hud, (18, y_pos + 6), (hud_width - 18, y_pos + 6), (50, 55, 65), 1)
-    y_pos += 26
+    y_pos = int(round(172 * sf))
+    cv2.putText(hud, "BALLISTIC GROUP METRICS", (18, y_pos), cv2.FONT_HERSHEY_SIMPLEX, max(0.35, 0.48 * sf), (0, 215, 255), 1, cv2.LINE_AA)
+    cv2.line(hud, (18, y_pos + int(round(5 * sf))), (hud_width - 18, y_pos + int(round(5 * sf))), (50, 55, 65), 1)
+    row_h = int(round(22 * sf))
+    y_pos += int(round(24 * sf))
 
     def draw_stat_row(label: str, val_str: str, curr_y: int) -> int:
-        cv2.putText(hud, label, (22, curr_y), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (170, 175, 185), 1, cv2.LINE_AA)
-        cv2.putText(hud, val_str, (hud_width - 190, curr_y), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (255, 255, 255), 1, cv2.LINE_AA)
-        return curr_y + 22
+        font_s = max(0.30, 0.40 * sf)
+        cv2.putText(hud, label, (22, curr_y), cv2.FONT_HERSHEY_SIMPLEX, font_s, (170, 175, 185), 1, cv2.LINE_AA)
+        cv2.putText(hud, val_str, (hud_width - 190, curr_y), cv2.FONT_HERSHEY_SIMPLEX, font_s, (255, 255, 255), 1, cv2.LINE_AA)
+        return curr_y + row_h
 
     y_pos = draw_stat_row("Shot Count:", f"{metrics.total_shots}", y_pos)
     y_pos = draw_stat_row("Extreme Spread:", f"{metrics.extreme_spread_mm:.2f} mm ({metrics.extreme_spread_moa:.2f} MOA)", y_pos)
@@ -136,23 +144,29 @@ def render_scoring_inspection_overlay(
     y_pos = draw_stat_row("Windage Bias:", f"{metrics.windage_bias_mm:+.2f} mm ({'Right' if metrics.windage_bias_mm >= 0 else 'Left'})", y_pos)
     y_pos = draw_stat_row("Elevation Bias:", f"{metrics.elevation_bias_mm:+.2f} mm ({'High' if metrics.elevation_bias_mm >= 0 else 'Low'})", y_pos)
 
-    y_pos += 12
-    cv2.putText(hud, "INDIVIDUAL SHOT LOG", (18, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 215, 255), 1, cv2.LINE_AA)
-    cv2.line(hud, (18, y_pos + 6), (hud_width - 18, y_pos + 6), (50, 55, 65), 1)
-    y_pos += 24
+    if h >= 256:
+        y_pos += int(round(8 * sf))
+        cv2.putText(hud, "INDIVIDUAL SHOT LOG", (18, y_pos), cv2.FONT_HERSHEY_SIMPLEX, max(0.35, 0.48 * sf), (0, 215, 255), 1, cv2.LINE_AA)
+        cv2.line(hud, (18, y_pos + int(round(5 * sf))), (hud_width - 18, y_pos + int(round(5 * sf))), (50, 55, 65), 1)
+        y_pos += int(round(20 * sf))
 
-    cv2.putText(hud, "SHOT", (22, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (130, 135, 145), 1, cv2.LINE_AA)
-    cv2.putText(hud, "SCORE", (82, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (130, 135, 145), 1, cv2.LINE_AA)
-    cv2.putText(hud, "DIST (MM)", (152, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (130, 135, 145), 1, cv2.LINE_AA)
-    cv2.putText(hud, "GAUGE (MM)", (245, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (130, 135, 145), 1, cv2.LINE_AA)
-    y_pos += 18
+        hdr_font_s = max(0.30, 0.38 * sf)
+        cv2.putText(hud, "SHOT", (22, y_pos), cv2.FONT_HERSHEY_SIMPLEX, hdr_font_s, (130, 135, 145), 1, cv2.LINE_AA)
+        cv2.putText(hud, "SCORE", (82, y_pos), cv2.FONT_HERSHEY_SIMPLEX, hdr_font_s, (130, 135, 145), 1, cv2.LINE_AA)
+        cv2.putText(hud, "DIST (MM)", (152, y_pos), cv2.FONT_HERSHEY_SIMPLEX, hdr_font_s, (130, 135, 145), 1, cv2.LINE_AA)
+        cv2.putText(hud, "GAUGE (MM)", (245, y_pos), cv2.FONT_HERSHEY_SIMPLEX, hdr_font_s, (130, 135, 145), 1, cv2.LINE_AA)
+        shot_row_h = int(round(18 * sf))
+        y_pos += shot_row_h
 
-    for s in shot_results[:12]:
-        row_color = (0, 215, 255) if s.is_inner_x else ((0, 255, 120) if s.score_value == 10 else (220, 225, 235))
-        cv2.putText(hud, f"#{s.shot_id:02d}", (22, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.38, row_color, 1, cv2.LINE_AA)
-        cv2.putText(hud, f"{s.score_label:>3}", (85, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.38, row_color, 1, cv2.LINE_AA)
-        cv2.putText(hud, f"{s.radial_dist_mm:6.2f}", (155, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (200, 200, 210), 1, cv2.LINE_AA)
-        cv2.putText(hud, f"{s.effective_gauge_dist_mm:6.2f}", (250, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (200, 200, 210), 1, cv2.LINE_AA)
-        y_pos += 18
+        max_rows = 12 if h >= 512 else 5
+        for s in shot_results[:max_rows]:
+            if y_pos > h - 4:
+                break
+            row_color = (0, 215, 255) if s.is_inner_x else ((0, 255, 120) if s.score_value == 10 else (220, 225, 235))
+            cv2.putText(hud, f"#{s.shot_id:02d}", (22, y_pos), cv2.FONT_HERSHEY_SIMPLEX, hdr_font_s, row_color, 1, cv2.LINE_AA)
+            cv2.putText(hud, f"{s.score_label:>3}", (85, y_pos), cv2.FONT_HERSHEY_SIMPLEX, hdr_font_s, row_color, 1, cv2.LINE_AA)
+            cv2.putText(hud, f"{s.radial_dist_mm:6.2f}", (155, y_pos), cv2.FONT_HERSHEY_SIMPLEX, hdr_font_s, (200, 200, 210), 1, cv2.LINE_AA)
+            cv2.putText(hud, f"{s.effective_gauge_dist_mm:6.2f}", (250, y_pos), cv2.FONT_HERSHEY_SIMPLEX, hdr_font_s, (200, 200, 210), 1, cv2.LINE_AA)
+            y_pos += shot_row_h
 
     return np.hstack([canvas, hud])
