@@ -13,12 +13,12 @@ import unittest
 import numpy as np
 import cv2
 
-from target_rectifier import TargetRectifier
-from infer_and_score import (
-    TargetRingsConfig,
-    extract_subpixel_peaks,
-    score_target_group,
+from target_scorer.geometry.rectifier import TargetRectifier
+from target_scorer.config import TargetRingsConfig
+from target_scorer.metrology.peaks import extract_subpixel_peaks
+from target_scorer.metrology.scoring import (
     calculate_moa,
+    score_target_group,
 )
 
 

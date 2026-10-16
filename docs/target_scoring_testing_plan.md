@@ -158,7 +158,7 @@ Generate 100 procedural targets at $256 \times 256$ with randomized shot counts,
 Reorganized directory to professional Python/AI packaging standards:
 - PEP 517/518 compliant structure (`pyproject.toml`, `src/target_scorer/`, `tests/`, `docs/`, `samples/`, `weights/`).
 - Local Git repository initialized on branch `main` with clean working tree.
-- Unified CLI entry point `target-scorer` (`infer`, `train`, `rectify`) plus backward-compatible root shims.
+- Unified CLI entry point `target-scorer` (`infer`, `train`, `rectify`) with all legacy root scripts and interfaces removed.
 
 ### Phase 4: Full-Scale Validation Transition [Next Phase]
 Once all tests pass cleanly at $256 \times 256$:

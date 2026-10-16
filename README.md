@@ -86,10 +86,7 @@ target_scorer/
 │   └── target_scoring_testing_plan.md
 ├── samples/                      # Reference synthetic targets and diagnostics
 ├── pyproject.toml                # Standard PEP 517/518 build configuration
-├── .gitignore
-├── infer_and_score.py            # Backward-compatible CLI wrapper
-├── train_heatmap_model.py        # Backward-compatible CLI wrapper
-└── target_rectifier.py           # Backward-compatible CLI wrapper
+└── .gitignore
 ```
 
 ---

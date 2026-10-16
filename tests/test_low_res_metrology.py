@@ -12,15 +12,15 @@ import unittest
 import numpy as np
 import cv2
 
-from target_rectifier import TargetRectifier, RectificationResult
-from infer_and_score import (
-    TargetRingsConfig,
-    extract_subpixel_peaks,
-    score_target_group,
+from target_scorer.geometry.rectifier import RectificationResult, TargetRectifier
+from target_scorer.config import TargetRingsConfig
+from target_scorer.infer import generate_synthetic_demo_target
+from target_scorer.metrology.peaks import extract_subpixel_peaks
+from target_scorer.metrology.scoring import (
     calculate_moa,
-    generate_synthetic_demo_target,
-    render_scoring_inspection_overlay,
+    score_target_group,
 )
+from target_scorer.metrology.visualization import render_scoring_inspection_overlay
 
 
 class TestLowResGeometricRectifier(unittest.TestCase):

@@ -28,8 +28,6 @@ dev = [
 
 [project.scripts]
 target-scorer = "target_scorer.cli:main"
-infer-and-score = "target_scorer.infer:main"
-train-heatmap = "target_scorer.train:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
