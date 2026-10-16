@@ -24,6 +24,8 @@ EXCLUDE_DIRS = {
     "build",
     "dist",
     "target_scorer.egg-info",
+    "weights",
+    "visual_inspection_reports",
 }
 
 EXCLUDE_EXTS = {
@@ -32,6 +34,8 @@ EXCLUDE_EXTS = {
     ".swp",
     ".swo",
     ".tmp",
+    ".pt",
+    ".pth",
 }
 
 
