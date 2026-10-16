@@ -172,7 +172,7 @@ def run_inference_and_scoring(
     tensor_img = torch.from_numpy(norm_img).permute(2, 0, 1).unsqueeze(0).to(device)
 
     with torch.no_grad():
-        pred_heatmaps = model(tensor_img).squeeze(0).cpu().numpy()
+        pred_heatmaps = model(tensor_img).squeeze(0).float().cpu().numpy()
 
     bullet_heatmap = pred_heatmaps[0]
     bullseye_heatmap = pred_heatmaps[1]

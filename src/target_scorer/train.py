@@ -117,7 +117,7 @@ def validate_one_epoch(
                 loss = criterion(predictions, targets)
             total_loss += loss.item()
 
-            preds_np = predictions.detach().cpu().numpy()
+            preds_np = predictions.detach().float().cpu().numpy()
             gt_coords_batch = batch["shot_coords"]
 
             for b in range(images.size(0)):

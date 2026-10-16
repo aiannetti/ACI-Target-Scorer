@@ -185,6 +185,18 @@ class TestLowResSubpixelPeakExtraction(unittest.TestCase):
         self.assertEqual(len(peaks), 2)
         self.assertGreater(peaks[0][2], peaks[1][2])
 
+    def test_met_05_half_precision_amp_compatibility(self):
+        """MET-05: AMP / float16 input heatmap handled transparently without OpenCV morphology errors."""
+        canvas_dim = 60
+        y, x = np.mgrid[0:canvas_dim, 0:canvas_dim]
+        hmap_fp16 = np.exp(-((x - 30.0)**2 + (y - 30.0)**2) / (2.0 * 2.0**2)).astype(np.float16)
+
+        peaks = extract_subpixel_peaks(hmap_fp16, threshold=0.45, min_distance_px=6.0, max_peaks=5)
+        self.assertEqual(len(peaks), 1)
+        self.assertAlmostEqual(peaks[0][0], 30.0, delta=0.1)
+        self.assertAlmostEqual(peaks[0][1], 30.0, delta=0.1)
+
+
 
 class TestLowResOfficialNRAScoring(unittest.TestCase):
     """Stage 3: NRA Inward Scoring & Ballistic Dispersion Tests."""

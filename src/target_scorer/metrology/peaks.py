@@ -24,6 +24,9 @@ def extract_subpixel_peaks(
       4. Sorting by confidence score.
       5. 2D quadratic Taylor series expansion for continuous sub-pixel coordinates.
     """
+    if heatmap.dtype != np.float32:
+        heatmap = heatmap.astype(np.float32)
+
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     dilated = cv2.dilate(heatmap, kernel)
     peaks_mask = (heatmap == dilated) & (heatmap > threshold)
