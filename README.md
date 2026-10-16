@@ -80,7 +80,10 @@ target_scorer/
 │   ├── test_camera_angles.py     # Oblique camera tilt stress test suite
 │   └── test_benchmark_low_res.py # Phase 3 100-target procedural statistical benchmark
 ├── scripts/
-│   └── generate_benchmark_visuals.py # Standalone visual inspection panel generator
+│   ├── generate_benchmark_visuals.py # Standalone visual inspection panel generator
+│   └── create_colab_bundle.py        # Bundler for Google Colab cloud training
+├── notebooks/
+│   └── target_scorer_colab_training.ipynb # Google Colab GPU training notebook
 ├── weights/
 │   └── target_scoring_hrnet_best.pt  # PyTorch model checkpoint
 ├── docs/
@@ -136,7 +139,7 @@ Extract and calibrate a canonical crop from a tilted photo:
 target-scorer rectify --image samples/synthetic_target_b-2.png --output rectified.png --debug rect_debug.png
 ```
 
-### 3. Model Training
+### 3. Model Training (Local)
 Run procedural training with real-world geometric and photometric augmentations:
 
 ```bash
@@ -146,6 +149,17 @@ target-scorer train --epochs 15 --batch-size 4
 # Quick low-resolution convergence test:
 target-scorer train --canvas-size 256 --scale 2.0 --epochs 3 --batch-size 4
 ```
+
+### 4. Cloud GPU Training (Google Colab)
+For fast mixed-precision training or full $800 \times 800$ resolution on Cloud GPUs (NVIDIA T4 / A100):
+
+1. Bundle the project archive:
+   ```bash
+   python scripts/create_colab_bundle.py
+   ```
+2. Open [`notebooks/target_scorer_colab_training.ipynb`](file:///home/antho/target_scorer/notebooks/target_scorer_colab_training.ipynb) in Google Colab.
+3. Upload `target_scorer_colab_bundle.zip` to the Colab files panel.
+4. Select your resolution preset ($512 \times 512$ or $800 \times 800$), click **Run All**, and download the trained `.pt` weights directly back to `weights/`.
 
 ---
 

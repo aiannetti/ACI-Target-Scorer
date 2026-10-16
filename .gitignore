@@ -39,3 +39,7 @@ rect_debug_*.png
 
 # PyTorch checkpoints (optional - allow specific weights)
 *.tmp
+
+# Bundles & Archives
+*.zip
+*.tar.gz

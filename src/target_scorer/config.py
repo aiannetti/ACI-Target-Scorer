@@ -40,6 +40,7 @@ class TrainConfig:
     num_workers: int = 2
     pin_memory: bool = True
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
+    use_amp: bool = True
     awing_omega: float = 14.0
     awing_theta: float = 0.5
     awing_epsilon: float = 1.0

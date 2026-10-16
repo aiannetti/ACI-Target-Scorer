@@ -56,24 +56,36 @@ def train_one_epoch(
     optimizer: torch.optim.Optimizer,
     criterion: nn.Module,
     config: TrainConfig,
+    scaler: torch.amp.GradScaler = None,
 ) -> float:
     """Executes one training epoch with gradient clipping and loss accumulation."""
     model.train()
     total_loss = 0.0
+    use_scaler = scaler is not None and scaler.is_enabled()
 
     for batch_idx, batch in enumerate(dataloader):
         images = batch["image"].to(config.device)
         targets = batch["heatmap"].to(config.device)
 
         optimizer.zero_grad()
-        predictions = model(images)
-        loss = criterion(predictions, targets)
+        if use_scaler:
+            with torch.amp.autocast("cuda", enabled=True):
+                predictions = model(images)
+                loss = criterion(predictions, targets)
+            scaler.scale(loss).backward()
+            if config.grad_clip_norm > 0:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_clip_norm)
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            predictions = model(images)
+            loss = criterion(predictions, targets)
+            loss.backward()
+            if config.grad_clip_norm > 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_clip_norm)
+            optimizer.step()
 
-        loss.backward()
-        if config.grad_clip_norm > 0:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_clip_norm)
-
-        optimizer.step()
         total_loss += loss.item()
 
     return total_loss / len(dataloader)
@@ -89,14 +101,20 @@ def validate_one_epoch(
     model.eval()
     total_loss = 0.0
     all_errors_mm: List[float] = []
+    use_amp = config.use_amp and config.device == "cuda" and torch.cuda.is_available()
 
     with torch.no_grad():
         for batch in dataloader:
             images = batch["image"].to(config.device)
             targets = batch["heatmap"].to(config.device)
 
-            predictions = model(images)
-            loss = criterion(predictions, targets)
+            if use_amp:
+                with torch.amp.autocast("cuda", enabled=True):
+                    predictions = model(images)
+                    loss = criterion(predictions, targets)
+            else:
+                predictions = model(images)
+                loss = criterion(predictions, targets)
             total_loss += loss.item()
 
             preds_np = predictions.detach().cpu().numpy()
@@ -131,7 +149,8 @@ def run_training(
     learning_rate: float = 3.5e-4,
     train_samples_per_epoch: int = 400,
     val_samples_per_epoch: int = 50,
-    checkpoint_path: str = "target_scoring_hrnet_best.pt"
+    checkpoint_path: str = "target_scoring_hrnet_best.pt",
+    use_amp: bool = True,
 ) -> str:
     """Initializes and runs the full end-to-end training and evaluation pipeline."""
     config = TrainConfig(
@@ -145,6 +164,7 @@ def run_training(
         peak_threshold=0.45,
         num_workers=2,
         pin_memory=True,
+        use_amp=use_amp,
     )
 
     if torch.cuda.is_available():
@@ -155,12 +175,18 @@ def run_training(
         device_name = "CPU"
         total_vram_gb = 0.0
 
+    scaler = torch.amp.GradScaler(
+        "cuda",
+        enabled=config.use_amp and (config.device == "cuda") and torch.cuda.is_available()
+    )
+
     print("=" * 72)
     print("  HIGH-RESOLUTION HEATMAP REGRESSION FOR TARGET SCORING")
     print(f"  Target Device:       {config.device.upper()} ({device_name})")
     print(f"  Available VRAM:      {total_vram_gb:.2f} GB")
     print(f"  Canvas Dimensions:   {config.canvas_size} x {config.canvas_size} px")
     print(f"  Metrology Scale:     {config.pixels_per_mm} pixels/mm")
+    print(f"  Mixed Precision:     {'Enabled (AMP)' if scaler.is_enabled() else 'Disabled (FP32)'}")
     print(f"  Worker Threads:      {config.num_workers} (Background CPU rendering)")
     print(f"  A-Wing Parameters:   omega={config.awing_omega}, alpha={config.awing_alpha}, theta={config.awing_theta}")
     print("=" * 72)
@@ -202,7 +228,7 @@ def run_training(
 
     for epoch in range(1, config.epochs + 1):
         t0 = time.time()
-        train_loss = train_one_epoch(model, train_loader, optimizer, criterion, config)
+        train_loss = train_one_epoch(model, train_loader, optimizer, criterion, config, scaler=scaler)
         val_loss, val_mre_mm, match_rate = validate_one_epoch(model, val_loader, criterion, config)
         scheduler.step()
         elapsed = time.time() - t0
@@ -242,6 +268,8 @@ def main():
     parser.add_argument("--train-samples", type=int, default=400, help="Procedural training samples per epoch (default: 400)")
     parser.add_argument("--val-samples", type=int, default=50, help="Validation samples per epoch (default: 50)")
     parser.add_argument("--checkpoint", type=str, default="target_scoring_hrnet_best.pt", help="Path to save best model checkpoint")
+    parser.add_argument("--amp", action="store_true", default=True, help="Enable automatic mixed precision (AMP)")
+    parser.add_argument("--no-amp", dest="amp", action="store_false", help="Disable automatic mixed precision")
 
     args = parser.parse_args()
 
@@ -254,6 +282,7 @@ def main():
         train_samples_per_epoch=args.train_samples,
         val_samples_per_epoch=args.val_samples,
         checkpoint_path=args.checkpoint,
+        use_amp=args.amp,
     )
 
 
