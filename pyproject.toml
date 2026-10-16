@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "target-scorer"
+version = "0.1.0"
+description = "Automated high-precision computer vision and deep learning metrology engine for NRA precision pistol targets."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "Antho"}
+]
+dependencies = [
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "opencv-python>=4.8.0",
+    "numpy>=1.24.0",
+    "pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+target-scorer = "target_scorer.cli:main"
+infer-and-score = "target_scorer.infer:main"
+train-heatmap = "target_scorer.train:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["target_scorer*"]
