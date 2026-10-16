@@ -48,9 +48,9 @@ def main():
     subparsers.add_parser("train", help="Run procedural synthetic training pipeline")
     subparsers.add_parser("rectify", help="Run standalone geometric rectification")
 
-    if len(sys.argv) < 2:
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         parser.print_help()
-        sys.exit(1)
+        sys.exit(0 if (len(sys.argv) >= 2 and sys.argv[1] in ("-h", "--help")) else 1)
 
     subcommand = sys.argv[1]
     if subcommand == "infer":
