@@ -278,6 +278,8 @@ def run_training(
     scheduler = CosineAnnealingLR(optimizer, T_max=config.epochs, eta_min=1e-6)
 
     best_mre = float("inf")
+    best_match_rate = 0.0
+    best_composite_score = -float("inf")
     ckpt_dir = os.path.dirname(os.path.abspath(checkpoint_path))
     if ckpt_dir:
         os.makedirs(ckpt_dir, exist_ok=True)
@@ -298,16 +300,25 @@ def run_training(
             flush=True
         )
 
-        if val_mre_mm < best_mre and val_mre_mm < 900.0:
+        # Composite metric balancing recall (match rate) and sub-pixel localization (MRE):
+        # In competition scoring, missing an impact is far worse than a 0.02 mm localization difference.
+        # Score = Match Rate (%) - 10.0 * MRE (mm)
+        composite_score = match_rate - (10.0 * val_mre_mm if val_mre_mm < 900.0 else 100.0)
+
+        if composite_score > best_composite_score and match_rate > 50.0:
+            best_composite_score = composite_score
             best_mre = val_mre_mm
+            best_match_rate = match_rate
             torch.save({
                 "epoch": epoch,
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
                 "best_mre_mm": best_mre,
+                "match_rate": best_match_rate,
+                "composite_score": best_composite_score,
                 "config": config,
             }, checkpoint_path)
-            print(f"  --> Saved new best checkpoint to '{checkpoint_path}' (MRE: {best_mre:.3f} mm)", flush=True)
+            print(f"  --> Saved new best checkpoint to '{checkpoint_path}' (Match: {best_match_rate:.1f}%, MRE: {best_mre:.3f} mm)", flush=True)
 
     print("=" * 72, flush=True)
     print(f"[✓] Training complete. Optimal checkpoint: {checkpoint_path}", flush=True)

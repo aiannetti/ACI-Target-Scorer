@@ -186,9 +186,10 @@ def run_inference_and_scoring(
     bullet_heatmap = pred_heatmaps[0]
     bullseye_heatmap = pred_heatmaps[1].copy()
 
-    # Constrain bullseye search to central region of canonical rectified frame
+    # Constrain bullseye search to tight central region of canonical rectified frame.
+    # TargetRectifier and canonical target generation place the aiming black center at (c_mid, c_mid).
     c_mid = eff_canvas_size / 2.0
-    search_radius = eff_canvas_size * 0.15
+    search_radius = max(8.0, 3.5 * eff_pixels_per_mm)  # ~3.5 mm around center
     yy, xx = np.ogrid[:eff_canvas_size, :eff_canvas_size]
     central_mask = ((xx - c_mid) ** 2 + (yy - c_mid) ** 2) <= (search_radius ** 2)
     bullseye_heatmap[~central_mask] = 0.0
@@ -202,11 +203,18 @@ def run_inference_and_scoring(
     )
     bull_peaks = extract_subpixel_peaks(
         bullseye_heatmap,
-        threshold=0.25,
-        min_distance_px=20.0 * (eff_pixels_per_mm / 4.0),
+        threshold=0.35,
+        min_distance_px=10.0 * (eff_pixels_per_mm / 4.0),
         max_peaks=1
     )
-    bullseye_center = (bull_peaks[0][0], bull_peaks[0][1]) if bull_peaks else (c_mid, c_mid)
+    # If the neural bullseye peak deviates by more than 5.0 px (~1.25 mm) from the
+    # canonical geometric center (c_mid, c_mid), it has latched onto a nearby bullet hole;
+    # in that case, rely on the exact geometric center.
+    max_center_dev_px = 5.0 * (eff_pixels_per_mm / 4.0)
+    if bull_peaks and math.hypot(bull_peaks[0][0] - c_mid, bull_peaks[0][1] - c_mid) <= max_center_dev_px:
+        bullseye_center = (bull_peaks[0][0], bull_peaks[0][1])
+    else:
+        bullseye_center = (c_mid, c_mid)
 
     print(f"[+] Detected {len(shot_peaks)} bullet impacts (Max requested: {max_shots}).")
     print(f"[+] Bullseye Center: ({bullseye_center[0]:.2f}, {bullseye_center[1]:.2f}) px")
