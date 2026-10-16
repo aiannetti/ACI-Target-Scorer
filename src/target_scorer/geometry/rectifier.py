@@ -318,6 +318,9 @@ class TargetRectifier:
         a = max(axis_1, axis_2) / 2.0
         b = min(axis_1, axis_2) / 2.0
 
+        if not (np.isfinite(a) and np.isfinite(b) and np.isfinite(center_x) and np.isfinite(center_y)):
+            return self._fallback_aspect_preserving_crop(img_bgr, blur_metric)
+
         if a <= 5.0 or b <= 2.0:
             return self._fallback_aspect_preserving_crop(img_bgr, blur_metric)
 
@@ -334,14 +337,20 @@ class TargetRectifier:
             angle_rad=major_axis_angle_rad
         )
 
-        canonical_crop = cv2.warpPerspective(
-            img_bgr,
-            H,
-            (self.canonical_dim, self.canonical_dim),
-            flags=cv2.INTER_LANCZOS4,
-            borderMode=cv2.BORDER_CONSTANT,
-            borderValue=(145, 180, 215)
-        )
+        if H is None:
+            return self._fallback_aspect_preserving_crop(img_bgr, blur_metric)
+
+        try:
+            canonical_crop = cv2.warpPerspective(
+                img_bgr,
+                H,
+                (self.canonical_dim, self.canonical_dim),
+                flags=cv2.INTER_LANCZOS4,
+                borderMode=cv2.BORDER_CONSTANT,
+                borderValue=(145, 180, 215)
+            )
+        except Exception:
+            return self._fallback_aspect_preserving_crop(img_bgr, blur_metric)
 
         raw_pixels_per_mm = a / self.nominal_radius_mm
         circularity = b / a

@@ -29,6 +29,8 @@ class SyntheticTargetDataset(Dataset):
 
         self.mean = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape(3, 1, 1)
         self.std = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape(3, 1, 1)
+        self.mean_tensor = torch.from_numpy(self.mean)
+        self.std_tensor = torch.from_numpy(self.std)
 
     def __len__(self) -> int:
         return self.size
@@ -117,7 +119,7 @@ class SyntheticTargetDataset(Dataset):
 
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
         img_tensor = torch.from_numpy(img_rgb).permute(2, 0, 1)
-        img_tensor = (img_tensor - torch.from_numpy(self.mean)) / torch.from_numpy(self.std)
+        img_tensor = (img_tensor - self.mean_tensor) / self.std_tensor
 
         hmap_combined = np.stack([bullet_hmap, bullseye_hmap], axis=0).astype(np.float32)
         hmap_tensor = torch.from_numpy(hmap_combined)

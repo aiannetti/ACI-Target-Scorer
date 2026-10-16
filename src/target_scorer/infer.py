@@ -140,7 +140,9 @@ def run_inference_and_scoring(
 
     rect_meta: Optional[RectificationResult] = None
 
-    if image_path and os.path.exists(image_path):
+    if image_path is not None:
+        if not os.path.exists(image_path):
+            raise FileNotFoundError(f"Specified target image '{image_path}' does not exist.")
         print(f"[+] Loading raw image: '{image_path}'")
         raw_bgr = rectifier.load_image_with_exif(image_path)
         rect_meta = rectifier.process_raw_image(raw_bgr, image_path=image_path)

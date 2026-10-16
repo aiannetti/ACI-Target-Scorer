@@ -15,7 +15,7 @@ import torch
 
 from target_scorer.geometry.rectifier import RectificationResult, TargetRectifier
 from target_scorer.config import TargetRingsConfig
-from target_scorer.infer import generate_synthetic_demo_target
+from target_scorer.infer import generate_synthetic_demo_target, run_inference_and_scoring
 from target_scorer.metrology.peaks import extract_subpixel_peaks
 from target_scorer.metrology.scoring import (
     calculate_moa,
@@ -23,6 +23,7 @@ from target_scorer.metrology.scoring import (
 )
 from target_scorer.metrology.visualization import render_scoring_inspection_overlay
 from target_scorer.models.loss import AdaptiveWingLoss
+from target_scorer.models.unet import HighResHeatmapUNet
 from target_scorer.train import calculate_localization_metrics
 
 
@@ -236,6 +237,19 @@ class TestLowResSubpixelPeakExtraction(unittest.TestCase):
         self.assertEqual(matches, 1)
         self.assertLess(mean_err, 1.0)
 
+    def test_met_08_saturated_plateau_centroid_reduction(self):
+        """MET-08: Saturated connected plateau is reduced to exactly one peak at its centroid."""
+        canvas_dim = 100
+        hmap = np.zeros((canvas_dim, canvas_dim), dtype=np.float32)
+        # 10x10 plateau centered at (44.5, 44.5)
+        hmap[40:50, 40:50] = 1.0
+        peaks = extract_subpixel_peaks(hmap, threshold=0.45, min_distance_px=5.0, max_peaks=10)
+        self.assertEqual(len(peaks), 1, "Saturated plateau produced multiple false peaks!")
+        pred_x, pred_y, score = peaks[0]
+        self.assertAlmostEqual(pred_x, 44.5, delta=0.01)
+        self.assertAlmostEqual(pred_y, 44.5, delta=0.01)
+        self.assertAlmostEqual(score, 1.0, delta=0.01)
+
 
 
 
@@ -314,6 +328,29 @@ class TestLowResOfficialNRAScoring(unittest.TestCase):
         self.assertAlmostEqual(metrics.windage_bias_mm, 0.0, delta=0.01)
         self.assertAlmostEqual(metrics.elevation_bias_mm, 0.0, delta=0.01)
 
+    def test_scoring_pixels_per_mm_positive(self):
+        """SC-06: Verifies score_target_group raises ValueError if pixels_per_mm <= 0."""
+        with self.assertRaises(ValueError):
+            score_target_group(
+                shot_peaks=[(128.0, 128.0, 0.9)],
+                bullseye_peak=(128.0, 128.0),
+                pixels_per_mm=0.0,
+            )
+
+    def test_single_shot_group_metrics(self):
+        """SC-07: Verifies 1-shot group gracefully evaluates with 0.0 extreme spread and farthest_pair=(1,1)."""
+        shot_peaks = [(self.bull_center[0] + 5.0 * self.pixels_per_mm, self.bull_center[1], 0.95)]
+        results, metrics = score_target_group(
+            shot_peaks=shot_peaks,
+            bullseye_peak=self.bull_center,
+            pixels_per_mm=self.pixels_per_mm,
+            rings_cfg=self.cfg_b2,
+        )
+        self.assertEqual(metrics.total_shots, 1)
+        self.assertEqual(metrics.extreme_spread_mm, 0.0)
+        self.assertEqual(metrics.mean_radius_mm, 0.0)
+        self.assertEqual(metrics.farthest_pair, (1, 1))
+
 
 class TestLowResEndToEndPipeline(unittest.TestCase):
     """Stage 4: End-to-End Pipeline & Scorecard HUD Rendering Tests."""
@@ -365,6 +402,25 @@ class TestLowResEndToEndPipeline(unittest.TestCase):
         )
         # Expected width: 256 (canonical) + 390 (HUD panel) = 646 px
         self.assertEqual(overlay.shape, (256, 256 + 390, 3))
+
+    def test_e2e_02_unet_divisibility_validation(self):
+        """E2E-02: Verifies HighResHeatmapUNet validates that spatial dimensions are divisible by 8."""
+        model = HighResHeatmapUNet(in_channels=3, out_channels=2, base_dim=16)
+        x_valid = torch.zeros((1, 3, 64, 64))
+        out = model(x_valid)
+        self.assertEqual(out.shape, (1, 2, 64, 64))
+
+        x_invalid = torch.zeros((1, 3, 65, 65))
+        with self.assertRaises(ValueError):
+            model(x_invalid)
+
+    def test_e2e_03_infer_nonexistent_image_raises(self):
+        """E2E-03: Verifies run_inference_and_scoring raises FileNotFoundError for nonexistent image."""
+        with self.assertRaises(FileNotFoundError):
+            run_inference_and_scoring(
+                image_path="this_image_definitely_does_not_exist_at_all.png",
+                checkpoint_path="weights/target_scoring_hrnet_512_best.pt"
+            )
 
 
 if __name__ == "__main__":

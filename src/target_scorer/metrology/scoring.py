@@ -60,6 +60,9 @@ def score_target_group(
     distance_yards: float = 16.67
 ) -> Tuple[List[ShotResult], GroupMetrics]:
     """Applies official NRA inward scoring rules and computes group dispersion."""
+    if pixels_per_mm <= 0:
+        raise ValueError(f"pixels_per_mm must be positive, got {pixels_per_mm}")
+
     if rings_cfg is None:
         rings_cfg = TargetRingsConfig()
 
@@ -125,7 +128,7 @@ def score_target_group(
     mean_radius_mm = float(np.mean(radii_from_coi)) if radii_from_coi else 0.0
 
     max_dist_mm = 0.0
-    farthest_pair = (1, 1)
+    farthest_pair = (shot_results[0].shot_id, shot_results[0].shot_id)
 
     for i in range(num_shots):
         for j in range(i + 1, num_shots):

@@ -178,6 +178,10 @@ def run_training(
     num_workers: int = 2,
 ) -> str:
     """Initializes and runs the full end-to-end training and evaluation pipeline."""
+    if canvas_size % 8 != 0:
+        raise ValueError(
+            f"Canvas size ({canvas_size}) must be divisible by 8 for U-Net architecture."
+        )
     has_tensor_cores = False
     if torch.cuda.is_available():
         torch.backends.cudnn.benchmark = True

@@ -30,7 +30,11 @@ def render_scoring_inspection_overlay(
     canvas = image_bgr.copy()
     h, w, _ = canvas.shape
     bull_x, bull_y = int(round(bullseye_center[0])), int(round(bullseye_center[1]))
-    bullet_radius_px = int(round((bullet_diameter_mm / 2.0) * pixels_per_mm))
+    bullet_radius_px = max(1, int(round((bullet_diameter_mm / 2.0) * pixels_per_mm)))
+
+    # Ensure bullet heatmap matches canvas dimensions
+    if bullet_heatmap.shape[:2] != (h, w):
+        bullet_heatmap = cv2.resize(bullet_heatmap, (w, h), interpolation=cv2.INTER_LINEAR)
 
     # 1. Overlay semi-transparent heat trace
     hmap_uint8 = np.clip(bullet_heatmap * 255.0, 0, 255).astype(np.uint8)

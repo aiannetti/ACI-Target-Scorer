@@ -64,6 +64,11 @@ class HighResHeatmapUNet(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.shape[-2] % 8 != 0 or x.shape[-1] % 8 != 0:
+            raise ValueError(
+                f"Input spatial dimensions (H={x.shape[-2]}, W={x.shape[-1]}) "
+                "must be divisible by 8 for U-Net down/up-sampling architecture."
+            )
         s0 = self.stem(x)
         s1 = self.down1(s0)
         s2 = self.down2(s1)
