@@ -18,7 +18,7 @@ def generate_cardboard_texture(config: TargetConfig) -> np.ndarray:
     base_color = np.array(config.cardboard_base_bgr, dtype=np.float32)
     canvas = np.ones((height, width, 3), dtype=np.float32) * base_color
 
-    flute_period = 32.0
+    flute_period = max(12.0, 8.0 * config.pixels_per_mm)
     if config.flute_direction == "vertical":
         x_coords = np.arange(width, dtype=np.float32)
         flute_wave = np.sin(2.0 * np.pi * x_coords / flute_period) * 12.0
@@ -62,13 +62,14 @@ def draw_standard_bullseye(canvas: np.ndarray, config: TargetConfig) -> Tuple[np
     black_bull_radius_px = int(round(black_radius_mm * config.pixels_per_mm))
     cv2.circle(canvas, c_int, black_bull_radius_px, (30, 30, 35), -1, lineType=cv2.LINE_AA)
 
+    cross_len = max(3, int(round(1.5 * config.pixels_per_mm)))
     for label, r_mm in inner_rings:
         r_px = int(round(r_mm * config.pixels_per_mm))
         ring_radii_px[label] = r_mm * config.pixels_per_mm
         if label == "X":
             cv2.circle(canvas, c_int, r_px, (220, 220, 220), 1, lineType=cv2.LINE_AA)
-            cv2.line(canvas, (c_int[0] - 5, c_int[1]), (c_int[0] + 5, c_int[1]), (220, 220, 220), 1, lineType=cv2.LINE_AA)
-            cv2.line(canvas, (c_int[0], c_int[1] - 5), (c_int[0], c_int[1] + 5), (220, 220, 220), 1, lineType=cv2.LINE_AA)
+            cv2.line(canvas, (c_int[0] - cross_len, c_int[1]), (c_int[0] + cross_len, c_int[1]), (220, 220, 220), 1, lineType=cv2.LINE_AA)
+            cv2.line(canvas, (c_int[0], c_int[1] - cross_len), (c_int[0], c_int[1] + cross_len), (220, 220, 220), 1, lineType=cv2.LINE_AA)
         else:
             cv2.circle(canvas, c_int, r_px, (220, 220, 220), config.ring_line_width_px, lineType=cv2.LINE_AA)
 
@@ -150,10 +151,12 @@ def stamp_double_shot(canvas: np.ndarray, primary_center: Tuple[float, float],
                       config: TargetConfig) -> List[ShotAnnotation]:
     """Stamps overlapping double shot with shared ragged boundary."""
     r_bullet_px = (config.bullet_diameter_mm / 2.0) * config.pixels_per_mm
+    margin_px = max(16.0, config.canvas_size * 0.06)
     cx1, cy1 = primary_center
     separation_dist = random.uniform(0.65 * (2.0 * r_bullet_px), 1.25 * (2.0 * r_bullet_px))
     angle = random.uniform(0, 2.0 * np.pi)
-    cx2, cy2 = cx1 + separation_dist * np.cos(angle), cy1 + separation_dist * np.sin(angle)
+    cx2 = max(margin_px, min(config.canvas_size - margin_px, cx1 + separation_dist * np.cos(angle)))
+    cy2 = max(margin_px, min(config.canvas_size - margin_px, cy1 + separation_dist * np.sin(angle)))
 
     shot1 = stamp_bullet_hole(canvas, (cx1, cy1), config, raggedness=0.95)
     shot1.shot_type = "double_primary"
@@ -185,11 +188,15 @@ def stamp_keyhole_shot(canvas: np.ndarray, center: Tuple[float, float],
     )
 
 
-def generate_ground_truth_heatmap(annotations: List[ShotAnnotation], config: TargetConfig) -> np.ndarray:
+def generate_ground_truth_heatmap(
+    annotations: List[ShotAnnotation],
+    config: TargetConfig,
+    sigma_override: Optional[float] = None
+) -> np.ndarray:
     """Generates continuous 2D Gaussian heatmaps with max-composition."""
     height, width = config.canvas_size, config.canvas_size
     heatmap = np.zeros((height, width), dtype=np.float32)
-    sigma = config.heatmap_sigma_px
+    sigma = sigma_override if sigma_override is not None else config.heatmap_sigma_px
     two_sigma_sq = 2.0 * (sigma ** 2)
     y_coords = np.arange(height, dtype=np.float32)
     x_coords = np.arange(width, dtype=np.float32)
@@ -201,6 +208,9 @@ def generate_ground_truth_heatmap(annotations: List[ShotAnnotation], config: Tar
         x_max = min(width, int(math.ceil(cx + radius_cutoff + 1)))
         y_min = max(0, int(math.floor(cy - radius_cutoff)))
         y_max = min(height, int(math.ceil(cy + radius_cutoff + 1)))
+
+        if x_min >= x_max or y_min >= y_max:
+            continue
 
         dx = x_coords[x_min:x_max] - cx
         dy = y_coords[y_min:y_max] - cy
@@ -226,13 +236,14 @@ def generate_synthetic_target_sample(
     annotations: List[ShotAnnotation] = []
     bull_x, bull_y = bullseye_center
     outer_key = "6" if config.target_type.upper() == "B-3" else "5"
-    max_dispersion_px = ring_radii_px[outer_key] * 0.85
+    margin_px = max(16.0, config.canvas_size * 0.06)
+    max_dispersion_px = min(ring_radii_px[outer_key] * 0.85, (config.canvas_size / 2.0) - margin_px)
 
     def sample_shot_position() -> Tuple[float, float]:
         r = np.random.exponential(scale=max_dispersion_px * 0.35)
         theta = random.uniform(0, 2.0 * np.pi)
-        sx = max(64.0, min(config.canvas_size - 64.0, bull_x + r * np.cos(theta)))
-        sy = max(64.0, min(config.canvas_size - 64.0, bull_y + r * np.sin(theta)))
+        sx = max(margin_px, min(config.canvas_size - margin_px, bull_x + r * np.cos(theta)))
+        sy = max(margin_px, min(config.canvas_size - margin_px, bull_y + r * np.sin(theta)))
         return (float(sx), float(sy))
 
     for _ in range(num_singles):
@@ -244,3 +255,4 @@ def generate_synthetic_target_sample(
 
     heatmap = generate_ground_truth_heatmap(annotations, config)
     return canvas, heatmap, annotations, bullseye_center, ring_radii_px
+

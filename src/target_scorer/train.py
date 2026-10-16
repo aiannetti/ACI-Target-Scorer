@@ -3,8 +3,9 @@ Procedural target heatmap training pipeline.
 """
 
 import argparse
+import os
 import time
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -26,28 +27,48 @@ def calculate_localization_metrics(
     pixels_per_mm: float, 
     threshold: float = 0.35
 ) -> Tuple[float, float, int, int]:
-    """Evaluates sub-millimeter Mean Radial Error (MRE) between detected peaks and ground truth."""
-    detected_peaks = extract_subpixel_peaks(pred_hmap, threshold=threshold)
-    if not detected_peaks or len(gt_coords) == 0:
-        return 999.0, 999.0, 0, len(gt_coords)
+    """Evaluates sub-millimeter Mean Radial Error (MRE) via 1-to-1 greedy bipartite matching."""
+    min_dist_px = max(6.0, 2.5 * pixels_per_mm)
+    detected_peaks = extract_subpixel_peaks(
+        pred_hmap, threshold=threshold, min_distance_px=min_dist_px, max_peaks=20
+    )
+    num_gt = len(gt_coords)
+    if not detected_peaks or num_gt == 0:
+        return 999.0, 999.0, 0, num_gt
 
     det_points = np.array([[p[0], p[1]] for p in detected_peaks], dtype=np.float32)
 
     diff = gt_coords[:, np.newaxis, :] - det_points[np.newaxis, :, :]
-    dist_px = np.sqrt(np.sum(diff ** 2, axis=-1))
+    dist_matrix = np.sqrt(np.sum(diff ** 2, axis=-1))
 
-    min_dists_px = np.min(dist_px, axis=1)
-    match_threshold_px = 8.0 * pixels_per_mm
-    valid_matches = min_dists_px[min_dists_px < match_threshold_px]
+    match_threshold_px = 6.0 * pixels_per_mm
+    matched_dists_px: List[float] = []
+    used_gt = set()
+    used_det = set()
 
-    if len(valid_matches) == 0:
-        return 999.0, 999.0, 0, len(gt_coords)
+    # Sort all (gt_idx, det_idx) pairs by Euclidean distance for 1-to-1 greedy assignment
+    pairs = [
+        (float(dist_matrix[g_i, d_i]), g_i, d_i)
+        for g_i in range(num_gt)
+        for d_i in range(len(det_points))
+        if dist_matrix[g_i, d_i] < match_threshold_px
+    ]
+    pairs.sort(key=lambda x: x[0])
 
-    errors_mm = valid_matches / pixels_per_mm
+    for d_px, g_i, d_i in pairs:
+        if g_i not in used_gt and d_i not in used_det:
+            used_gt.add(g_i)
+            used_det.add(d_i)
+            matched_dists_px.append(d_px)
+
+    if not matched_dists_px:
+        return 999.0, 999.0, 0, num_gt
+
+    errors_mm = np.array(matched_dists_px, dtype=np.float32) / pixels_per_mm
     mean_err_mm = float(np.mean(errors_mm))
     max_err_mm = float(np.max(errors_mm))
 
-    return mean_err_mm, max_err_mm, len(valid_matches), len(gt_coords)
+    return mean_err_mm, max_err_mm, len(matched_dists_px), num_gt
 
 
 def train_one_epoch(
@@ -56,7 +77,7 @@ def train_one_epoch(
     optimizer: torch.optim.Optimizer,
     criterion: nn.Module,
     config: TrainConfig,
-    scaler: torch.amp.GradScaler = None,
+    scaler: Optional[torch.amp.GradScaler] = None,
 ) -> float:
     """Executes one training epoch with gradient clipping and loss accumulation."""
     model.train()
@@ -101,6 +122,8 @@ def validate_one_epoch(
     model.eval()
     total_loss = 0.0
     all_errors_mm: List[float] = []
+    total_matched_shots = 0
+    total_gt_shots = 0
     use_amp = config.use_amp and config.device == "cuda" and torch.cuda.is_available()
 
     with torch.no_grad():
@@ -131,13 +154,14 @@ def validate_one_epoch(
                 mre_mm, _, matches, total = calculate_localization_metrics(
                     pred_shot_hmap, gt_coords, config.pixels_per_mm, threshold=config.peak_threshold
                 )
+                total_matched_shots += matches
+                total_gt_shots += total
                 if mre_mm < 900.0:
                     all_errors_mm.append(mre_mm)
 
     val_loss = total_loss / len(dataloader)
     mean_mre = float(np.mean(all_errors_mm)) if all_errors_mm else 999.0
-    total_samples = len(dataloader) * config.batch_size
-    match_rate = (len(all_errors_mm) / total_samples * 100.0) if total_samples > 0 else 0.0
+    match_rate = (total_matched_shots / total_gt_shots * 100.0) if total_gt_shots > 0 else 0.0
     return val_loss, mean_mre, match_rate
 
 
@@ -150,13 +174,34 @@ def run_training(
     train_samples_per_epoch: int = 400,
     val_samples_per_epoch: int = 50,
     checkpoint_path: str = "target_scoring_hrnet_best.pt",
-    use_amp: bool = True,
+    use_amp: Optional[bool] = None,
     num_workers: int = 2,
 ) -> str:
     """Initializes and runs the full end-to-end training and evaluation pipeline."""
+    has_tensor_cores = False
+    if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark = True
+        device_name = torch.cuda.get_device_name(0)
+        total_vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+        cc_major, cc_minor = torch.cuda.get_device_capability(0)
+        has_tensor_cores = cc_major >= 7
+    else:
+        device_name = "CPU"
+        total_vram_gb = 0.0
+        cc_major, cc_minor = (0, 0)
+
+    # Auto-detect AMP support: enable only on Volta+ (CC >= 7.0) with Tensor Cores unless overridden
+    if use_amp is None:
+        effective_amp = has_tensor_cores
+    else:
+        effective_amp = use_amp and has_tensor_cores
+
+    scaled_sigma = max(1.8, 2.5 * (pixels_per_mm / 4.0))
+
     config = TrainConfig(
         canvas_size=canvas_size,
         pixels_per_mm=pixels_per_mm,
+        heatmap_sigma_px=scaled_sigma,
         train_samples_per_epoch=train_samples_per_epoch,
         val_samples_per_epoch=val_samples_per_epoch,
         batch_size=batch_size,
@@ -165,21 +210,20 @@ def run_training(
         peak_threshold=0.40,
         num_workers=num_workers,
         pin_memory=True,
-        use_amp=use_amp,
+        use_amp=effective_amp,
     )
-
-    if torch.cuda.is_available():
-        torch.backends.cudnn.benchmark = True
-        device_name = torch.cuda.get_device_name(0)
-        total_vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
-    else:
-        device_name = "CPU"
-        total_vram_gb = 0.0
 
     scaler = torch.amp.GradScaler(
         "cuda",
         enabled=config.use_amp and (config.device == "cuda") and torch.cuda.is_available()
     )
+
+    if scaler.is_enabled():
+        amp_status = f"Enabled (AMP - CC {cc_major}.{cc_minor} Tensor Cores)"
+    elif torch.cuda.is_available() and not has_tensor_cores:
+        amp_status = f"Disabled (Native FP32 - CC {cc_major}.{cc_minor} Pascal lacks Tensor Cores)"
+    else:
+        amp_status = "Disabled (FP32)"
 
     print("=" * 72)
     print("  HIGH-RESOLUTION HEATMAP REGRESSION FOR TARGET SCORING")
@@ -187,7 +231,7 @@ def run_training(
     print(f"  Available VRAM:      {total_vram_gb:.2f} GB")
     print(f"  Canvas Dimensions:   {config.canvas_size} x {config.canvas_size} px")
     print(f"  Metrology Scale:     {config.pixels_per_mm} pixels/mm")
-    print(f"  Mixed Precision:     {'Enabled (AMP)' if scaler.is_enabled() else 'Disabled (FP32)'}")
+    print(f"  Mixed Precision:     {amp_status}")
     print(f"  Worker Threads:      {config.num_workers} (Background CPU rendering)")
     print(f"  A-Wing Parameters:   omega={config.awing_omega}, alpha={config.awing_alpha}, theta={config.awing_theta}")
     print("=" * 72)
@@ -226,6 +270,9 @@ def run_training(
     scheduler = CosineAnnealingLR(optimizer, T_max=config.epochs, eta_min=1e-6)
 
     best_mre = float("inf")
+    ckpt_dir = os.path.dirname(os.path.abspath(checkpoint_path))
+    if ckpt_dir:
+        os.makedirs(ckpt_dir, exist_ok=True)
 
     for epoch in range(1, config.epochs + 1):
         t0 = time.time()

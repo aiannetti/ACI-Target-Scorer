@@ -5,6 +5,7 @@ Inference and scoring pipeline entry point.
 import argparse
 import math
 import os
+import random
 import sys
 from typing import List, Optional, Tuple
 
@@ -12,12 +13,17 @@ import cv2
 import numpy as np
 import torch
 
-from target_scorer.config import TargetRingsConfig, TrainConfig
+from target_scorer.config import TargetConfig, TargetRingsConfig, TrainConfig
 from target_scorer.geometry.rectifier import RectificationResult, TargetRectifier
 from target_scorer.metrology.peaks import extract_subpixel_peaks
 from target_scorer.metrology.scoring import GroupMetrics, ShotResult, score_target_group
 from target_scorer.metrology.visualization import render_scoring_inspection_overlay
 from target_scorer.models.unet import HighResHeatmapUNet
+from target_scorer.synthetic.generator import (
+    draw_standard_bullseye,
+    generate_cardboard_texture,
+    stamp_bullet_hole,
+)
 
 
 def generate_synthetic_demo_target(
@@ -25,42 +31,36 @@ def generate_synthetic_demo_target(
     pixels_per_mm: float = 4.0,
     target_type: str = "B-2"
 ) -> Tuple[np.ndarray, Tuple[float, float]]:
-    """Generates an authentic NRA B-2 or B-3 demo target card."""
-    center = (canvas_size / 2.0, canvas_size / 2.0)
-    c_int = (int(round(center[0])), int(round(center[1])))
+    """Generates a deterministic, photorealistic NRA B-2 or B-3 demo target card."""
+    py_state = random.getstate()
+    np_state = np.random.get_state()
+    try:
+        random.seed(42)
+        np.random.seed(42)
 
-    img = np.ones((canvas_size, canvas_size, 3), dtype=np.uint8)
-    img[:] = (145, 180, 215)
+        cfg = TargetConfig(
+            canvas_size=canvas_size,
+            pixels_per_mm=pixels_per_mm,
+            target_type=target_type,
+        )
+        img = generate_cardboard_texture(cfg)
+        img, center, _ = draw_standard_bullseye(img, cfg)
 
-    for x in range(0, canvas_size, 32):
-        cv2.line(img, (x, 0), (x, canvas_size), (135, 170, 205), 1)
+        cx, cy = center
+        scale_ratio = pixels_per_mm / 4.0
+        demo_shots = [
+            (cx + 6.0 * scale_ratio, cy - 8.0 * scale_ratio),
+            (cx - 18.0 * scale_ratio, cy + 16.0 * scale_ratio),
+            (cx - 28.0 * scale_ratio, cy + 24.0 * scale_ratio),
+            (cx + 38.0 * scale_ratio, cy + 30.0 * scale_ratio),
+            (cx - 55.0 * scale_ratio, cy - 35.0 * scale_ratio),
+        ]
 
-    rings_cfg = TargetRingsConfig(target_type=target_type)
-    black_rad_px = int(round(rings_cfg.get_black_radius_mm() * pixels_per_mm))
-    cv2.circle(img, c_int, black_rad_px, (30, 30, 35), -1, lineType=cv2.LINE_AA)
-
-    for label, r_mm, _ in rings_cfg.get_rings_table():
-        r_px = int(round(r_mm * pixels_per_mm))
-        color = (220, 220, 220) if r_px <= black_rad_px else (40, 40, 45)
-        cv2.circle(img, c_int, r_px, color, 1 if label == "X" else 2, lineType=cv2.LINE_AA)
-
-    cv2.line(img, (c_int[0] - 6, c_int[1]), (c_int[0] + 6, c_int[1]), (220, 220, 220), 1, lineType=cv2.LINE_AA)
-    cv2.line(img, (c_int[0], c_int[1] - 6), (c_int[0], c_int[1] + 6), (220, 220, 220), 1, lineType=cv2.LINE_AA)
-
-    # Stamp demo bullet holes scaled proportionally with pixels_per_mm
-    r_bullet_px = int(round((5.69 / 2.0) * pixels_per_mm))
-    scale_ratio = pixels_per_mm / 4.0
-    demo_shots = [
-        (c_int[0] + int(round(6 * scale_ratio)), c_int[1] - int(round(8 * scale_ratio))),
-        (c_int[0] - int(round(18 * scale_ratio)), c_int[1] + int(round(16 * scale_ratio))),
-        (c_int[0] - int(round(24 * scale_ratio)), c_int[1] + int(round(22 * scale_ratio))),
-        (c_int[0] + int(round(38 * scale_ratio)), c_int[1] + int(round(30 * scale_ratio))),
-        (c_int[0] - int(round(55 * scale_ratio)), c_int[1] - int(round(35 * scale_ratio))),
-    ]
-
-    for sx, sy in demo_shots:
-        cv2.circle(img, (sx, sy), r_bullet_px + 2, (25, 25, 28), -1, lineType=cv2.LINE_AA)
-        cv2.circle(img, (sx, sy), int(r_bullet_px * 0.85), (12, 10, 10), -1, lineType=cv2.LINE_AA)
+        for sx, sy in demo_shots:
+            stamp_bullet_hole(img, (sx, sy), cfg, raggedness=1.0)
+    finally:
+        random.setstate(py_state)
+        np.random.set_state(np_state)
 
     return img, center
 
@@ -154,6 +154,9 @@ def run_inference_and_scoring(
             print(f"    [!] Warning:          {rect_meta.warning}")
 
         if debug_rect_path:
+            debug_dir = os.path.dirname(os.path.abspath(debug_rect_path))
+            if debug_dir:
+                os.makedirs(debug_dir, exist_ok=True)
             debug_img = rectifier.render_diagnostic_panel(raw_bgr, rect_meta)
             cv2.imwrite(debug_rect_path, debug_img)
             print(f"[✓] Saved camera rectification diagnostic to: '{debug_rect_path}'")
@@ -175,7 +178,14 @@ def run_inference_and_scoring(
         pred_heatmaps = model(tensor_img).squeeze(0).float().cpu().numpy()
 
     bullet_heatmap = pred_heatmaps[0]
-    bullseye_heatmap = pred_heatmaps[1]
+    bullseye_heatmap = pred_heatmaps[1].copy()
+
+    # Constrain bullseye search to central region of canonical rectified frame
+    c_mid = eff_canvas_size / 2.0
+    search_radius = eff_canvas_size * 0.15
+    yy, xx = np.ogrid[:eff_canvas_size, :eff_canvas_size]
+    central_mask = ((xx - c_mid) ** 2 + (yy - c_mid) ** 2) <= (search_radius ** 2)
+    bullseye_heatmap[~central_mask] = 0.0
 
     min_dist_px = max(6.0, (bullet_diameter_mm * 0.45) * eff_pixels_per_mm)
     shot_peaks = extract_subpixel_peaks(
@@ -186,11 +196,11 @@ def run_inference_and_scoring(
     )
     bull_peaks = extract_subpixel_peaks(
         bullseye_heatmap,
-        threshold=0.20,
+        threshold=0.25,
         min_distance_px=20.0 * (eff_pixels_per_mm / 4.0),
         max_peaks=1
     )
-    bullseye_center = (bull_peaks[0][0], bull_peaks[0][1]) if bull_peaks else (eff_canvas_size / 2.0, eff_canvas_size / 2.0)
+    bullseye_center = (bull_peaks[0][0], bull_peaks[0][1]) if bull_peaks else (c_mid, c_mid)
 
     print(f"[+] Detected {len(shot_peaks)} bullet impacts (Max requested: {max_shots}).")
     print(f"[+] Bullseye Center: ({bullseye_center[0]:.2f}, {bullseye_center[1]:.2f}) px")
@@ -228,6 +238,9 @@ def run_inference_and_scoring(
         rect_meta=rect_meta
     )
 
+    out_dir = os.path.dirname(os.path.abspath(output_path))
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
     cv2.imwrite(output_path, overlay_img)
     print(f"[✓] Visual inspection scorecard saved to: '{output_path}'")
     return shot_results, metrics

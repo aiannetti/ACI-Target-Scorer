@@ -55,22 +55,12 @@ class SyntheticTargetDataset(Dataset):
         num_doubles = random.randint(1, 2) if self.is_train else 1
         num_keyholes = random.randint(0, 1) if self.is_train else 1
 
-        img_bgr, bullet_hmap, shot_annotations, bull_center, _ = generate_synthetic_target_sample(
+        img_bgr, _, shot_annotations, bull_center, _ = generate_synthetic_target_sample(
             config=gen_cfg,
             num_singles=num_singles,
             num_doubles=num_doubles,
             num_keyholes=num_keyholes,
         )
-
-        bullseye_annotation = [
-            ShotAnnotation(
-                center_x=bull_center[0],
-                center_y=bull_center[1],
-                shot_type="bullseye",
-                caliber_radius_px=0.0
-            )
-        ]
-        bullseye_hmap = generate_ground_truth_heatmap(bullseye_annotation, gen_cfg)
 
         shot_coords_list = [[s.center_x, s.center_y] for s in shot_annotations]
         bull_x, bull_y = bull_center
@@ -80,8 +70,9 @@ class SyntheticTargetDataset(Dataset):
             c_y = self.config.canvas_size / 2.0
             scale_jitter = random.uniform(0.94, 1.06)
             angle_jitter = random.uniform(-4.0, 4.0)
-            dx = random.uniform(-24.0, 24.0)
-            dy = random.uniform(-24.0, 24.0)
+            max_shift = self.config.canvas_size * 0.045
+            dx = random.uniform(-max_shift, max_shift)
+            dy = random.uniform(-max_shift, max_shift)
 
             M = cv2.getRotationMatrix2D((c_x, c_y), angle_jitter, scale_jitter)
             M[0, 2] += dx
@@ -91,20 +82,12 @@ class SyntheticTargetDataset(Dataset):
                 img_bgr, M, (self.config.canvas_size, self.config.canvas_size),
                 borderMode=cv2.BORDER_REFLECT
             )
-            bullet_hmap = cv2.warpAffine(
-                bullet_hmap, M, (self.config.canvas_size, self.config.canvas_size),
-                borderMode=cv2.BORDER_CONSTANT, borderValue=0.0
-            )
-            bullseye_hmap = cv2.warpAffine(
-                bullseye_hmap, M, (self.config.canvas_size, self.config.canvas_size),
-                borderMode=cv2.BORDER_CONSTANT, borderValue=0.0
-            )
 
             bull_x = float(M[0, 0] * bull_center[0] + M[0, 1] * bull_center[1] + M[0, 2])
             bull_y = float(M[1, 0] * bull_center[0] + M[1, 1] * bull_center[1] + M[1, 2])
 
             transformed_shots = []
-            margin = 8.0
+            margin = max(6.0, 2.0 * self.config.pixels_per_mm)
             for sx, sy in shot_coords_list:
                 tx = float(M[0, 0] * sx + M[0, 1] * sy + M[0, 2])
                 ty = float(M[1, 0] * sx + M[1, 1] * sy + M[1, 2])
@@ -116,6 +99,21 @@ class SyntheticTargetDataset(Dataset):
             beta = random.uniform(-14.0, 14.0)
             noise = np.random.normal(0.0, 3.0, img_bgr.shape).astype(np.float32)
             img_bgr = np.clip(img_bgr.astype(np.float32) * alpha + beta + noise, 0, 255).astype(np.uint8)
+
+        # Render exact unattenuated sub-pixel Gaussians directly at final continuous coordinates
+        final_shot_annotations = [
+            ShotAnnotation(center_x=sx, center_y=sy, shot_type="shot", caliber_radius_px=0.0)
+            for sx, sy in shot_coords_list
+        ]
+        bullet_hmap = generate_ground_truth_heatmap(final_shot_annotations, gen_cfg)
+
+        bullseye_annotation = [
+            ShotAnnotation(center_x=bull_x, center_y=bull_y, shot_type="bullseye", caliber_radius_px=0.0)
+        ]
+        bullseye_sigma = max(3.5, gen_cfg.heatmap_sigma_px * 1.5)
+        bullseye_hmap = generate_ground_truth_heatmap(
+            bullseye_annotation, gen_cfg, sigma_override=bullseye_sigma
+        )
 
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
         img_tensor = torch.from_numpy(img_rgb).permute(2, 0, 1)

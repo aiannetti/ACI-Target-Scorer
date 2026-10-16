@@ -12,6 +12,7 @@ from target_scorer.train import main as train_main
 def rectify_cli():
     from target_scorer.geometry.rectifier import TargetRectifier
     import cv2
+    import os
     parser = argparse.ArgumentParser(prog="target-scorer rectify", description="Target Rectification & Perspective Unwarping")
     parser.add_argument("--image", type=str, required=True, help="Path to input smartphone target photograph")
     parser.add_argument("--target", type=str, default="B-2", choices=["B-2", "B-3", "b-2", "b-3"], help="NRA target type")
@@ -25,10 +26,16 @@ def rectify_cli():
     img_bgr = rectifier.load_image_with_exif(args.image)
     result = rectifier.process_raw_image(img_bgr, image_path=args.image)
 
+    out_dir = os.path.dirname(os.path.abspath(args.output))
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
     cv2.imwrite(args.output, result.canonical_crop)
     print(f"[✓] Saved canonical rectified crop ({result.canonical_crop.shape[1]}x{result.canonical_crop.shape[0]} @ {result.canonical_pixels_per_mm:.1f} px/mm) to: {args.output}")
 
     if args.debug:
+        dbg_dir = os.path.dirname(os.path.abspath(args.debug))
+        if dbg_dir:
+            os.makedirs(dbg_dir, exist_ok=True)
         diag = rectifier.render_diagnostic_panel(img_bgr, result)
         cv2.imwrite(args.debug, diag)
         print(f"[✓] Saved rectification diagnostic visualization to: {args.debug}")

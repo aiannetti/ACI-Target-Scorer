@@ -11,6 +11,7 @@ import math
 import unittest
 import numpy as np
 import cv2
+import torch
 
 from target_scorer.geometry.rectifier import RectificationResult, TargetRectifier
 from target_scorer.config import TargetRingsConfig
@@ -21,6 +22,9 @@ from target_scorer.metrology.scoring import (
     score_target_group,
 )
 from target_scorer.metrology.visualization import render_scoring_inspection_overlay
+from target_scorer.models.loss import AdaptiveWingLoss
+from target_scorer.train import calculate_localization_metrics
+
 
 
 class TestLowResGeometricRectifier(unittest.TestCase):
@@ -195,6 +199,43 @@ class TestLowResSubpixelPeakExtraction(unittest.TestCase):
         self.assertEqual(len(peaks), 1)
         self.assertAlmostEqual(peaks[0][0], 30.0, delta=0.1)
         self.assertAlmostEqual(peaks[0][1], 30.0, delta=0.1)
+
+    def test_met_06_adaptive_wing_loss_foreground_weighting(self):
+        """MET-06: Verifies AdaptiveWingLoss foreground weighting increases loss on peak regions."""
+        loss_unweighted = AdaptiveWingLoss(foreground_weight=0.0)
+        loss_weighted = AdaptiveWingLoss(foreground_weight=10.0)
+
+        # Create dummy target with one peak (1.0) and mostly background (0.0)
+        t = torch.zeros((1, 1, 32, 32), dtype=torch.float32)
+        t[0, 0, 16, 16] = 1.0
+        # Prediction with small error at the peak
+        p = t.clone()
+        p[0, 0, 16, 16] = 0.50  # 0.50 error on foreground
+
+        l_unw = loss_unweighted(p, t)
+        l_w = loss_weighted(p, t)
+        # Weighted loss must penalize the foreground peak error much more heavily
+        self.assertGreater(l_w.item(), l_unw.item())
+
+    def test_met_07_one_to_one_bipartite_shot_matching(self):
+        """MET-07: Verifies calculate_localization_metrics prevents multiple GT shots matching 1 peak."""
+        pixels_per_mm = 4.0
+        # Single detected peak at (100, 100)
+        hmap = np.zeros((200, 200), dtype=np.float32)
+        y, x = np.mgrid[0:200, 0:200]
+        hmap = np.exp(-((x - 100.0)**2 + (y - 100.0)**2) / (2.0 * 2.0**2)).astype(np.float32)
+
+        # Two ground truth shots near the single peak
+        gt_coords = np.array([[99.0, 100.0], [101.0, 100.0]], dtype=np.float32)
+
+        mean_err, max_err, matches, total = calculate_localization_metrics(
+            hmap, gt_coords, pixels_per_mm=pixels_per_mm, threshold=0.40
+        )
+        self.assertEqual(total, 2)
+        # Exactly 1 shot may match to the single detected peak; the second GT shot remains unmatched!
+        self.assertEqual(matches, 1)
+        self.assertLess(mean_err, 1.0)
+
 
 
 
