@@ -200,9 +200,35 @@ target-scorer colab-train \
     --lr 2.5e-4 \
     --sigma 2.8 \
     --gpu T4
+
+# Hybrid real target training on A100 (Option A)
+target-scorer colab-train \
+    --canvas-size 1024 \
+    --scale 4.0 \
+    --epochs 15 \
+    --batch-size 8 \
+    --lr 1.0e-4 \
+    --gpu A100 \
+    --real-data-dir datasets/calibration_targets \
+    --real-ratio 0.35 \
+    --initial-weights weights/target_scoring_hrnet_1024_best.pt
+
+# Session management & active job monitoring
+target-scorer colab-train --list-sessions
+target-scorer colab-train --stop-session target-train-1024-12345
 ```
 
-### C. Local Workstation Training (`target-scorer train`)
+### C. Cloud-Accelerated Auto-Labeling (`target-scorer colab-autolabel`)
+```bash
+# Auto-label a directory of target photos on cloud GPU (T4/A100)
+target-scorer colab-autolabel \
+    --input-dir /path/to/phone_targets \
+    --output-dir datasets/autolabeled_targets \
+    --target B-2 \
+    --gpu T4
+```
+
+### D. Local Workstation Training (`target-scorer train`)
 ```bash
 # Local fine-tuning on GTX 1060 (batch size 2 to fit 6GB VRAM)
 target-scorer train \
@@ -245,7 +271,7 @@ target-scorer train \
 target-scorer train --canvas-size 512 --epochs 15 --batch-size 4
 ```
 
-### D. Assisted Auto-Labeling & Active Learning (`target-scorer autolabel`)
+### E. Assisted Auto-Labeling & Active Learning (`target-scorer autolabel`)
 ```bash
 # Auto-label a single smartphone photograph (unwarps, detects shots, renders review card)
 target-scorer autolabel \
@@ -264,7 +290,7 @@ target-scorer autolabel \
     --threshold 0.40
 ```
 
-### E. Standalone Geometric Rectification (`target-scorer rectify`)
+### F. Standalone Geometric Rectification (`target-scorer rectify`)
 ```bash
 # Rectify an Apple iPhone HEIC photo (auto-corrects EXIF orientation and Display P3 gamut)
 target-scorer rectify --image target.heic --target B-2 --canvas-size 1024 --scale 4.0 --output rectified.png --debug debug.png
@@ -285,7 +311,7 @@ result = rectifier.rectify(frame_bgr)  # Accepts np.ndarray directly
 canonical_crop = result.canonical_crop
 ```
 
-### F. Python Environment Setup via `uv` (PyTorch & Platform Compatibility)
+### G. Python Environment Setup via `uv` (PyTorch & Platform Compatibility)
 
 #### Why `uv` is Required
 1. **PyTorch Wheel Compatibility Lag:** Official PyTorch pre-compiled binaries and CUDA distributions (e.g., `cu121`, `cu124`) lag behind modern bleeding-edge Python releases (Python 3.13, 3.14+). Attempting to install PyTorch on bleeding-edge Python yields:

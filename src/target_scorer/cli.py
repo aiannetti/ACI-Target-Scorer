@@ -96,6 +96,35 @@ def autolabel_cli():
             print(f"    [-] Failed to process '{target_file.name}': {e}")
 
 
+def colab_autolabel_cli():
+    from target_scorer.colab_runner import run_colab_autolabel
+    parser = argparse.ArgumentParser(prog="target-scorer colab-autolabel", description="Cloud-Accelerated Assisted Auto-Labeling on Google Colab CLI")
+    parser.add_argument("--input-dir", type=str, required=True, help="Local directory of target photographs to upload and auto-label")
+    parser.add_argument("--output-dir", type=str, default="datasets/autolabeled_targets", help="Local directory to download annotations and review cards")
+    parser.add_argument("--target", type=str, default="B-2", choices=["B-2", "B-3", "b-2", "b-3"], help="NRA target type")
+    parser.add_argument("--checkpoint", type=str, default="weights/target_scoring_hrnet_1024_best.pt", help="Path to local model weights to upload")
+    parser.add_argument("--canvas-size", type=int, default=1024, help="Canonical canvas dimension")
+    parser.add_argument("--scale", type=float, default=4.0, help="Pixels per mm metric scale")
+    parser.add_argument("--threshold", type=float, default=0.40, help="Peak confidence threshold")
+    parser.add_argument("--gpu", type=str, default="T4", choices=["A100", "H100", "T4", "L4", "G4"], help="Cloud GPU type (default: T4)")
+    parser.add_argument("--session", type=str, default=None, help="Custom Colab session name")
+    parser.add_argument("--timeout", type=float, default=1800.0, help="Maximum execution timeout in seconds")
+    args = parser.parse_args(sys.argv[2:])
+
+    run_colab_autolabel(
+        input_dir=args.input_dir,
+        output_dir=args.output_dir,
+        target_type=args.target.upper(),
+        checkpoint=args.checkpoint,
+        canvas_size=args.canvas_size,
+        pixels_per_mm=args.scale,
+        threshold=args.threshold,
+        gpu=args.gpu,
+        session_name=args.session,
+        timeout_seconds=args.timeout,
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="target-scorer",
@@ -104,7 +133,8 @@ def main():
     subparsers = parser.add_subparsers(dest="subcommand", help="Available commands")
     subparsers.add_parser("infer", help="Run shot detection, inward scoring, and scorecard rendering")
     subparsers.add_parser("train", help="Run procedural synthetic training pipeline")
-    subparsers.add_parser("colab-train", help="Run cloud GPU training via Google Colab CLI (A100/T4)")
+    subparsers.add_parser("colab-train", help="Run cloud GPU training via Google Colab CLI (A100/H100/T4)")
+    subparsers.add_parser("colab-autolabel", help="Run cloud GPU assisted auto-labeling via Google Colab CLI")
     subparsers.add_parser("rectify", help="Run standalone geometric rectification")
     subparsers.add_parser("autolabel", help="Run model-assisted active learning and auto-labeling")
 
@@ -123,6 +153,8 @@ def main():
     elif subcommand == "colab-train":
         sys.argv = [sys.argv[0]] + sys.argv[2:]
         colab_main()
+    elif subcommand == "colab-autolabel":
+        colab_autolabel_cli()
     elif subcommand == "rectify":
         rectify_cli()
     elif subcommand == "autolabel":

@@ -360,12 +360,14 @@ target-scorer infer \
 ### 2. Cloud GPU Training via Colab CLI (`target-scorer colab-train`)
 
 The `colab-train` command provides fully automated, zero-setup cloud training:
-1. Automatically packages the codebase (excluding large local weights and caches).
-2. Provisions a Google Colab VM with an NVIDIA A100 or T4 accelerator via `colab` CLI.
-3. Uploads the bundle and starting weights.
-4. Executes mixed-precision (AMP) training with real-time log streaming.
-5. Evaluates a post-training scorecard and downloads the best checkpoint locally.
-6. Automatically terminates the cloud VM to conserve compute units.
+1. Performs a pre-flight compute unit balance check via `colab usage`.
+2. Automatically packages the codebase (excluding large local weights and caches).
+3. Provisions a Google Colab VM with an NVIDIA A100, H100, T4, L4, or G4 accelerator.
+4. Outputs a live interactive browser URL (`https://colab.research.google.com/...`) for real-time monitoring.
+5. Uploads the bundle, optional initial weights, and real target datasets.
+6. Executes mixed-precision (AMP) training with real-time log streaming.
+7. Evaluates dual post-training scorecards (both NRA B-2 and NRA B-3) and downloads the best checkpoint and both scorecards locally.
+8. Automatically terminates the cloud VM to conserve compute units.
 
 #### A. Warm-Start Fine-Tuning on NVIDIA A100 ($1024 \times 1024$, ~6 minutes)
 Start directly from pre-trained weights to reach $98.9\%$ recall in 10–12 epochs:
@@ -381,7 +383,23 @@ target-scorer colab-train \
     --initial-weights weights/target_scoring_hrnet_1024_best.pt
 ```
 
-#### B. Full 45-Epoch Cold Training on NVIDIA A100 ($1024 \times 1024$)
+#### B. Cloud Hybrid Real Target Training (Option A: 70% Synthetic + 30% Real)
+Uploads your local real target dataset archive to the Colab VM and blends samples during cloud training:
+```bash
+target-scorer colab-train \
+    --canvas-size 1024 \
+    --scale 4.0 \
+    --epochs 15 \
+    --batch-size 8 \
+    --lr 1.0e-4 \
+    --sigma 3.2 \
+    --gpu A100 \
+    --real-data-dir datasets/calibration_targets \
+    --real-ratio 0.35 \
+    --initial-weights weights/target_scoring_hrnet_1024_best.pt
+```
+
+#### C. Full 45-Epoch Cold Training on NVIDIA A100 ($1024 \times 1024$)
 Train from scratch with Cosine Annealing:
 ```bash
 target-scorer colab-train \
@@ -394,33 +412,52 @@ target-scorer colab-train \
     --gpu A100
 ```
 
-#### C. Cloud Training at $800 \times 800$ Resolution (NVIDIA T4 or A100)
+#### D. Session Management & Monitoring Utilities
 ```bash
-target-scorer colab-train \
-    --canvas-size 800 \
-    --scale 4.0 \
-    --epochs 20 \
-    --batch-size 8 \
-    --lr 2.5e-4 \
-    --sigma 2.8 \
-    --gpu T4
+# List active Colab cloud sessions:
+target-scorer colab-train --list-sessions
+
+# Terminate an orphaned session immediately:
+target-scorer colab-train --stop-session target-train-1024-12345
 ```
 
 #### Colab Training Flags Reference:
 | Flag | Default | Description |
 | :--- | :---: | :--- |
-| `--canvas-size` | `800` | Resolution preset: `512`, `800`, or `1024` |
+| `--canvas-size` | `800` | Resolution preset: `256`, `512`, `800`, or `1024` |
 | `--scale` | `4.0` | Pixels per millimeter scale |
 | `--epochs` | `15` | Total training epochs |
-| `--batch-size` | `8` | Batch size (8 recommended for A100) |
+| `--batch-size` | `8` | Batch size (8 recommended for A100/H100) |
 | `--lr` | `3.5e-4` | Initial learning rate |
 | `--sigma` | `None` | Gaussian sigma in pixels ($3.2$ for 1024, $2.8$ for 800) |
-| `--gpu` | `A100` | Cloud accelerator: `A100`, `T4`, or `L4` |
+| `--gpu` | `A100` | Cloud accelerator: `A100`, `H100`, `T4`, `L4`, or `G4` |
+| `--high-mem` | `False` | Request high-RAM instance shape |
 | `--initial-weights` | `None` | Local `.pt` checkpoint to upload for warm-start fine-tuning |
 | `--real-data-dir` | `None` | Local directory of real target annotations to upload & train |
 | `--real-ratio` | `0.35` | Real target sampling probability (1.0 = pure real, 0.35 = hybrid) |
 | `--session` | `auto` | Custom Colab session name |
 | `--timeout` | `3600` | Maximum job execution timeout in seconds |
+| `--list-sessions` | `False` | List all running Colab sessions and exit |
+| `--stop-session` | `None` | Stop a specific running session and exit |
+
+---
+
+### 3. Cloud-Accelerated Auto-Labeling (`target-scorer colab-autolabel`)
+
+Auto-label an entire directory of high-resolution target photographs using a fast cloud GPU:
+
+```bash
+target-scorer colab-autolabel \
+    --input-dir /path/to/phone_targets \
+    --output-dir datasets/autolabeled_targets \
+    --target B-2 \
+    --gpu T4
+```
+
+1. Automatically compresses and uploads your local photo directory.
+2. Runs geometric unwarping, U-Net inference, sub-pixel peak extraction, and inward scoring on remote GPU.
+3. Packages and downloads all JSON annotations and visual review cards locally to `--output-dir`.
+4. Automatically releases the cloud VM.
 
 ---
 
