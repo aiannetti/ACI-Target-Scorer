@@ -157,11 +157,11 @@ On Windows (PowerShell):
 powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-#### Step 2: Clone Repository & Create Pinned Python 3.11 Environment
+#### Step 2: Setup Project Directory & Create Pinned Python 3.11 Environment
 `uv` will automatically download and bootstrap a standalone Python 3.11 build if one is not installed on your system:
 ```bash
-# Clone the repository
-git clone <repo-url> target_scorer
+# Create project directory (or git clone <repo-url> target_scorer)
+mkdir target_scorer
 cd target_scorer
 
 # Download Python 3.11 and create isolated virtual environment

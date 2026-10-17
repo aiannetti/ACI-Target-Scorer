@@ -216,7 +216,9 @@ target-scorer train --canvas-size 512 --epochs 15 --batch-size 4
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source ~/.bashrc  # Or source ~/.zshrc (On Windows PowerShell: irm https://astral.sh/uv/install.ps1 | iex)
 
-# 2. Download Python 3.11 and create isolated virtual environment
+# 2. Create project directory, download Python 3.11, and create isolated virtual environment
+mkdir target_scorer
+cd target_scorer
 uv python install 3.11
 uv venv target_env --python 3.11
 source target_env/bin/activate  # On Windows: target_env\Scripts\activate
