@@ -81,19 +81,20 @@ class TargetRingsConfig:
     """
     target_type: str = "B-2"
 
-    # Official NRA B-2 (50 ft Slow Fire): Radii in mm (inches * 25.4 / 2)
-    b2_x_mm: float = 5.715          # 0.45 in dia center dot / tie-breaker
-    b2_10_mm: float = 11.43         # 0.90 in dia
+    # Official NRA B-2 (50 ft Slow Fire, Rule 4.2): Radii in mm (inches * 25.4 / 2)
+    # The innermost ring is the 10 ring (0.90 in dia). No X-ring at 50ft slow fire.
+    b2_10_mm: float = 11.43         # 0.90 in dia (innermost ring)
     b2_9_mm: float = 19.558         # 1.54 in dia
     b2_8_mm: float = 28.321         # 2.23 in dia
-    b2_7_mm: float = 38.989         # 3.07 in dia (black edge)
+    b2_7_mm: float = 38.989         # 3.07 in dia (black edge: 7, 8, 9, 10 are black)
     b2_6_mm: float = 52.832         # 4.16 in dia
     b2_5_mm: float = 70.612         # 5.56 in dia
     b2_4_mm: float = 93.091         # 7.33 in dia
 
-    # Official NRA B-3 (50 ft Timed and Rapid Fire): Radii in mm
-    b3_x_mm: float = 11.43          # 0.90 in dia
-    b3_10_mm: float = 22.86         # 1.80 in dia
+    # Official NRA B-3 (50 ft Timed and Rapid Fire, Rule 4.3): Radii in mm
+    # 9 and 10 rings black (3.06 in dia). Innermost ring is X ring (0.90 in dia).
+    b3_x_mm: float = 11.43          # 0.90 in dia (X ring)
+    b3_10_mm: float = 22.86         # 1.80 in dia (10 ring)
     b3_9_mm: float = 38.862         # 3.06 in dia (black edge)
     b3_8_mm: float = 56.642         # 4.46 in dia
     b3_7_mm: float = 77.978         # 6.14 in dia
@@ -111,7 +112,6 @@ class TargetRingsConfig:
                 ("6", self.b3_6_mm, 6),
             ]
         return [
-            ("X", self.b2_x_mm, 10),
             ("10", self.b2_10_mm, 10),
             ("9", self.b2_9_mm, 9),
             ("8", self.b2_8_mm, 8),

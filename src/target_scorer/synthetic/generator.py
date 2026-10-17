@@ -54,9 +54,9 @@ def draw_standard_bullseye(canvas: np.ndarray, config: TargetConfig) -> Tuple[np
         inner_rings = [("X", 11.43), ("10", 22.86)]
         outer_rings = [("8", 56.642), ("7", 77.978), ("6", 105.664)]
     else:
-        # NRA B-2: 7, 8, 9, 10 rings black (3.07 in dia)
+        # NRA B-2: 7, 8, 9, 10 rings black (3.07 in dia) - Innermost ring is 10 (no X-ring)
         black_radius_mm = 38.989
-        inner_rings = [("X", 5.715), ("10", 11.43), ("9", 19.558), ("8", 28.321)]
+        inner_rings = [("10", 11.43), ("9", 19.558), ("8", 28.321)]
         outer_rings = [("6", 52.832), ("5", 70.612), ("4", 93.091)]
 
     black_bull_radius_px = int(round(black_radius_mm * config.pixels_per_mm))

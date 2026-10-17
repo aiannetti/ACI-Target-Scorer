@@ -278,9 +278,11 @@ class TestLowResOfficialNRAScoring(unittest.TestCase):
         return results[0].score_label
 
     def test_sc_01_inner_x_ring(self):
-        """SC-01: Shot center at 1.20 mm earns inner X."""
-        label = self._eval_single_shot(1.20, self.cfg_b2)
-        self.assertEqual(label, "X")
+        """SC-01: Shot center at 1.20 mm earns inner X on B-3 (timed & rapid), but 10 on B-2 (slow fire)."""
+        label_b3 = self._eval_single_shot(1.20, self.cfg_b3)
+        self.assertEqual(label_b3, "X")
+        label_b2 = self._eval_single_shot(1.20, self.cfg_b2)
+        self.assertEqual(label_b2, "10")
 
     def test_sc_02_breaking_10_ring(self):
         """SC-02: Shot center at 14.15 mm has gauge dist 11.305 mm <= 11.43 mm -> breaks 10 ring."""

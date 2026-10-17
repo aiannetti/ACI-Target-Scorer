@@ -230,7 +230,10 @@ def run_inference_and_scoring(
 
     print("-" * 72)
     print(f"  TARGET:              NRA {target_type} (50 ft)")
-    print(f"  TOTAL SCORE:         {metrics.total_score} - {metrics.x_count}X / {metrics.max_possible_score}")
+    if target_type == "B-2":
+        print(f"  TOTAL SCORE:         {metrics.total_score} / {metrics.max_possible_score}")
+    else:
+        print(f"  TOTAL SCORE:         {metrics.total_score} - {metrics.x_count}X / {metrics.max_possible_score}")
     print(f"  EXTREME SPREAD:      {metrics.extreme_spread_mm:.2f} mm  ({metrics.extreme_spread_moa:.2f} MOA)")
     print(f"  MEAN RADIUS:         {metrics.mean_radius_mm:.2f} mm  ({metrics.mean_radius_moa:.2f} MOA)")
     print(f"  WINDAGE BIAS:        {metrics.windage_bias_mm:+.2f} mm ({'Right' if metrics.windage_bias_mm >= 0 else 'Left'})")

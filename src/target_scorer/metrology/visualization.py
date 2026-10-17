@@ -140,12 +140,17 @@ def render_scoring_inspection_overlay(
     cv2.rectangle(hud, (16, b_top), (hud_width - 16, b_bot), (32, 34, 40), -1)
     cv2.rectangle(hud, (16, b_top), (hud_width - 16, b_bot), (60, 65, 75), 1)
 
-    score_str = f"{metrics.total_score} - {metrics.x_count}X"
+    if rings_cfg.target_type.upper() == "B-2":
+        score_str = f"{metrics.total_score}"
+        max_x = int(round(30 + 115 * sf))
+    else:
+        score_str = f"{metrics.total_score} - {metrics.x_count}X"
+        max_x = int(round(30 + 185 * sf))
+
     cv2.putText(hud, "TOTAL SCORE", (30, int(round(95 * sf))), cv2.FONT_HERSHEY_SIMPLEX, max(0.32, 0.40 * sf), (180, 180, 190), 1, cv2.LINE_AA)
     cv2.putText(hud, score_str, (30, int(round(132 * sf))), cv2.FONT_HERSHEY_SIMPLEX, max(0.65, 1.15 * sf), (0, 255, 120), max(1, int(round(2 * sf))), cv2.LINE_AA)
 
     max_str = f"/ {metrics.max_possible_score}"
-    max_x = int(round(30 + 185 * sf))
     cv2.putText(hud, max_str, (max_x, int(round(130 * sf))), cv2.FONT_HERSHEY_SIMPLEX, max(0.42, 0.60 * sf), (140, 140, 150), 1, cv2.LINE_AA)
 
     # Ballistic Group Statistics block
