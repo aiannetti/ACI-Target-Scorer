@@ -38,6 +38,7 @@ def run_colab_training(
     scorecard_dest: Optional[str] = None,
     timeout_seconds: float = 3600.0,
     sigma: Optional[float] = None,
+    initial_weights: Optional[str] = None,
 ) -> str:
     """
     End-to-end cloud training orchestration using Google Colab CLI:
@@ -97,6 +98,11 @@ def run_colab_training(
         cmd_upload = [colab_bin, "upload", bundle_zip, "/content/target_scorer_colab_bundle.zip", "-s", session_name]
         subprocess.run(cmd_upload, check=True)
 
+        if initial_weights is not None and os.path.exists(initial_weights):
+            print(f"[*] Uploading initial weights ({os.path.getsize(initial_weights) / (1024**2):.1f} MB) to Colab VM...")
+            cmd_upload_w = [colab_bin, "upload", initial_weights, "/content/initial_weights.pt", "-s", session_name]
+            subprocess.run(cmd_upload_w, check=True)
+
         # 4. Unpack and install on remote VM
         print("[4/6] Initializing remote environment on Colab VM...")
         setup_script = (
@@ -117,6 +123,7 @@ def run_colab_training(
         # 5. Execute training with mixed-precision (AMP)
         print(f"[5/6] Executing {canvas_size}x{canvas_size} training on NVIDIA {gpu}...")
         sigma_arg = f"    '--sigma', '{sigma}',\n" if sigma is not None else ""
+        init_w_arg = "    '--initial-weights', '/content/initial_weights.pt',\n" if (initial_weights and os.path.exists(initial_weights)) else ""
         train_script = (
             "import subprocess, sys, os\n"
             "os.makedirs('/content/target_scorer/weights', exist_ok=True)\n"
@@ -130,6 +137,7 @@ def run_colab_training(
             f"    '--val-samples', '{val_samples_per_epoch}',\n"
             f"    '--lr', '{learning_rate}',\n"
             f"{sigma_arg}"
+            f"{init_w_arg}"
             f"    '--checkpoint', '/content/target_scorer/weights/target_scoring_hrnet_{canvas_size}_best.pt',\n"
             f"    '--amp',\n"
             f"]\n"
@@ -211,6 +219,7 @@ def main():
     parser.add_argument("--checkpoint", type=str, default=None, help="Local destination path for trained checkpoint")
     parser.add_argument("--sigma", type=float, default=None, help="Gaussian heatmap sigma in pixels (e.g. 3.2)")
     parser.add_argument("--timeout", type=float, default=3600.0, help="Maximum execution timeout in seconds")
+    parser.add_argument("--initial-weights", type=str, default=None, help="Path to local weights checkpoint to warm-start/fine-tune from in Colab")
 
     args = parser.parse_args()
 
@@ -227,6 +236,7 @@ def main():
         checkpoint_dest=args.checkpoint,
         timeout_seconds=args.timeout,
         sigma=args.sigma,
+        initial_weights=args.initial_weights,
     )
 
 

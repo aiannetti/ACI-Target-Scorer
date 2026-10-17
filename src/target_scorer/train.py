@@ -177,6 +177,7 @@ def run_training(
     use_amp: Optional[bool] = None,
     num_workers: int = 2,
     sigma: Optional[float] = None,
+    initial_weights: Optional[str] = None,
 ) -> str:
     """Initializes and runs the full end-to-end training and evaluation pipeline."""
     if canvas_size % 8 != 0:
@@ -268,6 +269,19 @@ def run_training(
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"[*] Initialized HighResHeatmapUNet (Total Trainable Parameters: {total_params:,})")
 
+    if initial_weights is not None:
+        if os.path.exists(initial_weights):
+            print(f"[+] Loading initial weights for fine-tuning from '{initial_weights}'...")
+            try:
+                ckpt = torch.load(initial_weights, map_location=config.device, weights_only=False)
+            except TypeError:
+                ckpt = torch.load(initial_weights, map_location=config.device)
+            state_dict = ckpt.get("model_state_dict", ckpt)
+            model.load_state_dict(state_dict)
+            print(f"[✓] Initial weights loaded successfully. Warm-starting from pre-trained state.")
+        else:
+            print(f"[-] Warning: Specified initial weights path '{initial_weights}' not found. Initializing from scratch.")
+
     criterion = AdaptiveWingLoss(
         omega=config.awing_omega,
         theta=config.awing_theta,
@@ -340,6 +354,7 @@ def main():
     parser.add_argument("--sigma", type=float, default=None, help="Gaussian heatmap sigma in pixels (default: scaled from px/mm)")
     parser.add_argument("--amp", action="store_true", default=True, help="Enable automatic mixed precision (AMP)")
     parser.add_argument("--no-amp", dest="amp", action="store_false", help="Disable automatic mixed precision")
+    parser.add_argument("--initial-weights", type=str, default=None, help="Path to existing weights checkpoint to warm-start/fine-tune from")
 
     args = parser.parse_args()
 
@@ -355,6 +370,7 @@ def main():
         use_amp=args.amp,
         num_workers=args.workers,
         sigma=args.sigma,
+        initial_weights=args.initial_weights,
     )
 
 
