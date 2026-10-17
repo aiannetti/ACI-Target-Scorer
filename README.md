@@ -129,19 +129,83 @@ target_scorer/
 
 ---
 
-## Installation
+## Python Environment Setup via `uv`
 
+### Why `uv` is Required: Python & PyTorch Compatibility
+
+PyTorch pre-built wheels and CUDA binaries **do not immediately support bleeding-edge Python releases** (such as Python 3.13 or 3.14+). Installing PyTorch on an unsupported or system-default Python version typically fails with:
+```text
+ERROR: Could not find a version that satisfies the requirement torch (from versions: none)
+ERROR: No matching distribution found for torch
+```
+Additionally, modern Linux distributions (Ubuntu 23.04+, Debian 12+) enforce **PEP 668** ("externally managed environment"), which intentionally blocks system-wide `pip install`.
+
+To resolve this, we use **[`uv`](https://github.com/astral-sh/uv)**—an extremely fast, standalone Python package and environment manager written in Rust. `uv` allows you to automatically download, isolate, and pin a fully compatible **Python 3.11** interpreter without needing system root privileges, manual compilation, or affecting system packages.
+
+---
+
+### Step-by-Step Setup Guide
+
+#### Step 1: Install `uv`
+On Linux / macOS:
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.bashrc  # Or source ~/.zshrc
+```
+On Windows (PowerShell):
+```powershell
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+#### Step 2: Clone Repository & Create Pinned Python 3.11 Environment
+`uv` will automatically download and bootstrap a standalone Python 3.11 build if one is not installed on your system:
 ```bash
 # Clone the repository
 git clone <repo-url> target_scorer
 cd target_scorer
 
-# Create and activate Python 3.11 virtual environment
+# Download Python 3.11 and create isolated virtual environment
+uv python install 3.11
 uv venv target_env --python 3.11
-source target_env/bin/activate
 
-# Install package in editable mode
-pip install -e .
+# Activate the virtual environment
+source target_env/bin/activate  # On Windows: target_env\Scripts\activate
+```
+
+#### Step 3: Install PyTorch with CUDA Acceleration
+Install the official PyTorch CUDA 12.1 or CUDA 12.4 pre-built binaries via `uv pip`:
+
+* **For NVIDIA GPU (CUDA 12.1 - Recommended for Linux / WSL2):**
+  ```bash
+  uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+  ```
+* **For NVIDIA GPU (CUDA 12.4):**
+  ```bash
+  uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+  ```
+* **For CPU Only:**
+  ```bash
+  uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+  ```
+* **For Apple Silicon (Mac M1/M2/M3 with MPS):**
+  ```bash
+  uv pip install torch torchvision
+  ```
+
+#### Step 4: Install Target Scorer in Editable Mode
+```bash
+uv pip install -e .
+```
+
+#### Step 5: Verify Environment & Hardware Acceleration
+Run the self-check snippet to ensure Python version, PyTorch, and CUDA are correctly wired:
+```bash
+python -c "import torch; print(f'CUDA Available: {torch.cuda.is_available()}'); print(f'Device: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"CPU\"}')"
+```
+Output:
+```text
+CUDA Available: True
+Device: NVIDIA GeForce GTX 1060 6GB (or NVIDIA A100 / T4)
 ```
 
 ---

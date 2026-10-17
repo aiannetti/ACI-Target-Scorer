@@ -199,6 +199,42 @@ target-scorer train \
 target-scorer train --canvas-size 512 --epochs 15 --batch-size 4
 ```
 
+### D. Python Environment Setup via `uv` (PyTorch & Platform Compatibility)
+
+#### Why `uv` is Required
+1. **PyTorch Wheel Compatibility Lag:** Official PyTorch pre-compiled binaries and CUDA distributions (e.g., `cu121`, `cu124`) lag behind modern bleeding-edge Python releases (Python 3.13, 3.14+). Attempting to install PyTorch on bleeding-edge Python yields:
+   ```text
+   ERROR: Could not find a version that satisfies the requirement torch (from versions: none)
+   ERROR: No matching distribution found for torch
+   ```
+2. **PEP 668 ("Externally Managed Environments"):** Modern Linux operating systems (Ubuntu 23.04+, Debian 12+, Fedora) intentionally disallow direct `pip install` against system Python packages.
+3. **Standalone Interpreter Isolation:** [`uv`](https://github.com/astral-sh/uv) (built in Rust) automatically fetches and isolates a dedicated, compatible **Python 3.11** interpreter without requiring system package manager (`apt`/`dnf`) overrides or `root` permissions.
+
+#### Step-by-Step Setup
+```bash
+# 1. Install uv (Linux/macOS)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.bashrc  # Or source ~/.zshrc (On Windows PowerShell: irm https://astral.sh/uv/install.ps1 | iex)
+
+# 2. Download Python 3.11 and create isolated virtual environment
+uv python install 3.11
+uv venv target_env --python 3.11
+source target_env/bin/activate  # On Windows: target_env\Scripts\activate
+
+# 3. Install PyTorch with Hardware Acceleration
+# For NVIDIA GPU (CUDA 12.1 - Recommended for Linux / WSL2):
+uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+
+# (For CPU Only: uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu)
+# (For Apple Silicon: uv pip install torch torchvision)
+
+# 4. Install target_scorer in editable mode
+uv pip install -e .
+
+# 5. Verify CUDA Hardware Acceleration & Python Version
+python -c "import sys, torch; print(f'Python: {sys.version.split()[0]} | CUDA: {torch.cuda.is_available()} | Device: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"CPU\"}')"
+```
+
 ---
 
 ## 5. Completed Sprints & Roadmap Status
