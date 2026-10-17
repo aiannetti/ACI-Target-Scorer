@@ -102,6 +102,19 @@ class SyntheticTargetDataset(Dataset):
             noise = np.random.normal(0.0, 3.0, img_bgr.shape).astype(np.float32)
             img_bgr = np.clip(img_bgr.astype(np.float32) * alpha + beta + noise, 0, 255).astype(np.uint8)
 
+            # Invariance against lossy compression variations (JPEG DCT quantization & mobile ISP artifacts)
+            if random.random() < 0.65:
+                quality = random.randint(35, 90)
+                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
+                success, enc_buf = cv2.imencode(".jpg", img_bgr, encode_param)
+                if success:
+                    img_bgr = cv2.imdecode(enc_buf, cv2.IMREAD_COLOR)
+
+            # Invariance against subtle mobile camera optical defocus / handheld sensor blur
+            if random.random() < 0.25:
+                ksize = random.choice([3, 5])
+                img_bgr = cv2.GaussianBlur(img_bgr, (ksize, ksize), 0)
+
         # Render exact unattenuated sub-pixel Gaussians directly at final continuous coordinates
         final_shot_annotations = [
             ShotAnnotation(center_x=sx, center_y=sy, shot_type="shot", caliber_radius_px=0.0)

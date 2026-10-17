@@ -8,6 +8,7 @@ from target_scorer.config import (
     TargetRingsConfig,
     TrainConfig,
 )
+from target_scorer.geometry.canonical_loader import ImageCanonicalizer, canonicalize_image
 from target_scorer.geometry.rectifier import RectificationResult, TargetRectifier
 from target_scorer.metrology.peaks import extract_subpixel_peaks
 from target_scorer.metrology.scoring import (
@@ -59,6 +60,8 @@ __all__ = [
     "TrainConfig",
     "TargetRingsConfig",
     "ShotAnnotation",
+    "ImageCanonicalizer",
+    "canonicalize_image",
     "TargetRectifier",
     "RectificationResult",
     "HighResHeatmapUNet",

@@ -7,7 +7,8 @@ import math
 import os
 import random
 import sys
-from typing import List, Optional, Tuple
+from pathlib import Path
+from typing import BinaryIO, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -68,7 +69,7 @@ def generate_synthetic_demo_target(
 
 def run_inference_and_scoring(
     checkpoint_path: str = "target_scoring_hrnet_best.pt",
-    image_path: Optional[str] = None,
+    image_path: Optional[Union[str, Path, bytes, BinaryIO, np.ndarray]] = None,
     output_path: str = "scored_inspection_result.png",
     debug_rect_path: Optional[str] = "rectification_debug.png",
     target_type: str = "B-2",
@@ -143,11 +144,17 @@ def run_inference_and_scoring(
     rect_meta: Optional[RectificationResult] = None
 
     if image_path is not None:
-        if not os.path.exists(image_path):
-            raise FileNotFoundError(f"Specified target image '{image_path}' does not exist.")
-        print(f"[+] Loading raw image: '{image_path}'")
+        if isinstance(image_path, (str, Path)):
+            if str(image_path) != "-" and not os.path.exists(image_path):
+                raise FileNotFoundError(f"Specified target image '{image_path}' does not exist.")
+            print(f"[+] Loading raw image: '{image_path}'")
+        elif isinstance(image_path, np.ndarray):
+            print(f"[+] Loading in-memory image buffer ({image_path.shape[1]}x{image_path.shape[0]}, {image_path.dtype})")
+        else:
+            print(f"[+] Loading image stream ({type(image_path).__name__})")
+
         raw_bgr = rectifier.load_image_with_exif(image_path)
-        rect_meta = rectifier.process_raw_image(raw_bgr, image_path=image_path)
+        rect_meta = rectifier.process_raw_image(raw_bgr)
         img_canonical = rect_meta.canonical_crop
 
         print(f"    --> Raw Dimensions:   {raw_bgr.shape[1]}x{raw_bgr.shape[0]} px")

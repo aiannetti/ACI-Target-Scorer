@@ -118,6 +118,7 @@ src/target_scorer/
 ├── train.py              # Procedural training pipeline with warm-start & composite fitness
 ├── colab_runner.py       # Automated cloud GPU orchestrator (Google Colab CLI)
 ├── geometry/
+│   ├── canonical_loader.py # Format-agnostic ingestion (HEIC, RAW, buffers, EXIF, sRGB CMS)
 │   └── rectifier.py      # Classical ellipse fitting & homography rectification
 ├── metrology/
 │   ├── peaks.py          # 2D Taylor-series sub-pixel peak extraction
@@ -248,5 +249,6 @@ python -c "import sys, torch; print(f'Python: {sys.version.split()[0]} | CUDA: {
 [Sprint 4: High-Res 1024x1024 Retraining]   --> COMPLETED (98.9% match, 0.335mm MRE on A100)
 [Sprint 5: Privacy & PII Masking]           --> COMPLETED (--redact-pii margin masking)
 [Sprint 6: Cloud Orchestration]             --> COMPLETED (Colab CLI automated runner)
-[Sprint 7: Edge Deployment]                 --> PENDING (ONNX conversion for Pi 4)
+[Sprint 7: Format-Agnostic Ingestion]       --> COMPLETED (HEIC, RAW/DNG, Picamera2 memory buffers)
+[Sprint 8: Edge Deployment]                 --> PENDING (ONNX conversion for Pi 4)
 ```

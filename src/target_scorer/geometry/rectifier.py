@@ -6,10 +6,12 @@ calculates a closed-form 3x3 homography matrix, and warps the target into
 an exact metric-calibrated canonical plane (e.g. 512x512 @ 4.0 px/mm or 256x256 @ 2.0 px/mm).
 """
 
+import io
 import math
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import Any, BinaryIO, Dict, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -59,26 +61,16 @@ class TargetRectifier:
         self.canonical_center = (canonical_dim / 2.0, canonical_dim / 2.0)
 
     @staticmethod
-    def load_image_with_exif(image_path: str) -> np.ndarray:
+    def load_image_with_exif(source: Union[str, Path, bytes, io.BytesIO, BinaryIO, np.ndarray]) -> np.ndarray:
         """
-        Reads smartphone photos while strictly obeying EXIF rotation metadata.
-        Prevents upside-down or sideways OpenCV orientation bugs.
+        Reads images across all formats (HEIC, JPEG, PNG, TIFF, BMP, WebP, in-memory arrays)
+        while strictly obeying EXIF rotation metadata and sRGB color profile mapping.
         """
-        if not os.path.exists(image_path):
-            raise FileNotFoundError(f"Target image '{image_path}' not found.")
+        from target_scorer.geometry.canonical_loader import canonicalize_image
+        return canonicalize_image(source, target_format="BGR")
 
-        try:
-            from PIL import Image, ImageOps
-            pil_img = Image.open(image_path)
-            transposed = ImageOps.exif_transpose(pil_img)
-            rgb = np.array(transposed)
-            if rgb.ndim == 2:
-                return cv2.cvtColor(rgb, cv2.COLOR_GRAY2BGR)
-            if rgb.shape[2] == 4:
-                return cv2.cvtColor(rgb, cv2.COLOR_RGBA2BGR)
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        except Exception:
-            return cv2.imread(image_path, cv2.IMREAD_COLOR)
+    # Convenient alias
+    load_image = load_image_with_exif
 
     @staticmethod
     def evaluate_blur_metric(gray: np.ndarray) -> float:
@@ -285,16 +277,18 @@ class TargetRectifier:
 
     def process_raw_image(
         self,
-        raw_bgr: np.ndarray,
-        image_path: Optional[str] = None
+        raw_bgr: Optional[np.ndarray] = None,
+        image_path: Optional[Union[str, Path, bytes, io.BytesIO, BinaryIO, np.ndarray]] = None,
+        image_input: Optional[Union[str, Path, bytes, io.BytesIO, BinaryIO, np.ndarray]] = None,
     ) -> RectificationResult:
         """
-        End-to-end normalization pipeline.
+        End-to-end normalization pipeline. Accepts in-memory arrays, file paths, or byte streams.
         """
-        if image_path is not None and os.path.exists(image_path):
-            img_bgr = self.load_image_with_exif(image_path)
-        else:
-            img_bgr = raw_bgr.copy()
+        source = image_input if image_input is not None else (image_path if image_path is not None else raw_bgr)
+        if source is None:
+            raise ValueError("TargetRectifier.process_raw_image requires raw_bgr, image_path, or image_input.")
+
+        img_bgr = self.load_image_with_exif(source)
 
         h_raw, w_raw = img_bgr.shape[:2]
 
@@ -379,6 +373,9 @@ class TargetRectifier:
             is_fallback=False,
             warning=warning_msg
         )
+
+    # Convenient alias for process_raw_image
+    rectify = process_raw_image
 
     def render_diagnostic_panel(
         self,

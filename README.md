@@ -19,6 +19,9 @@ An automated, sub-millimeter computer vision and deep learning metrology engine 
   * **NRA B-2 (Rule 4.2):** 50 ft Slow Fire. Innermost ring is the 10-ring ($0.90'' = 22.86\text{ mm}$ dia). No X-ring. Scored as `Score / Max` (e.g. `96 / 100`).
   * **NRA B-3 (Rule 4.3):** 50 ft Timed & Rapid Fire. Innermost ring is the X-ring ($0.90'' = 22.86\text{ mm}$ dia). Scored as `Score - X / Max` (e.g. `100 - 7X / 100`).
   * Evaluates full **10-shot competition strings** with caliber-aware physical line-breaking rules.
+* **Cross-Platform Format-Agnostic Ingestion:**
+  * Universal ingestion of **Apple HEIC/HEIF** and **Apple ProRAW DNG** (via `pillow-heif`), Android Ultra HDR / JPEG, desktop formats (PNG, TIFF, BMP, WebP), and direct in-memory edge buffers (`np.ndarray` from Raspberry Pi `Picamera2` or OpenCV video streams).
+  * Automatic EXIF orientation normalization (tags 1–8) and Display P3 to standard sRGB color management system (CMS) mapping.
 * **Camera Independence & Geometric Normalization:**
   * Auto-corrects perspective pitch and yaw tilt up to $\pm 45^\circ$, arbitrary smartphone aspect ratios, and orientations via direct least-squares algebraic ellipse fitting and closed-form homography rectification.
 * **Privacy & PII Protection:**
@@ -32,13 +35,15 @@ An automated, sub-millimeter computer vision and deep learning metrology engine 
 ## Architecture Overview
 
 ```
-                      [ Raw Smartphone Photograph ]
-       (Arbitrary resolution, perspective tilt up to ~45°, any aspect ratio)
+                      [ Raw Target Image / Buffer / Stream ]
+        (Apple HEIC, ProRAW DNG, Ultra HDR, JPEG, PNG, or Picamera2 RAM)
                                     │
                                     ▼
        ┌──────────────────────────────────────────────────────────┐
-       │ Stage 1: TargetRectifier (Classical CV Engine)          │
-       │  - EXIF orientation auto-rotation (Pillow / OpenCV)     │
+       │ Stage 1: ImageCanonicalizer & TargetRectifier           │
+       │  - Polymorphic ingestion (HEIC, RAW, JPEG, PNG, Buffers)│
+       │  - EXIF orientation auto-rotation (tags 1–8)            │
+       │  - Display P3 / ICC color profile mapping to sRGB (CMS) │
        │  - Laplacian variance motion blur check (> 75.0)        │
        │  - Specular glare suppression (Navier-Stokes inpaint)   │
        │  - Bullseye segmentation & morphological close          │
@@ -94,6 +99,7 @@ target_scorer/
 │       ├── train.py              # Procedural synthetic training pipeline
 │       ├── colab_runner.py       # Automated Google Colab CLI cloud orchestrator
 │       ├── geometry/
+│       │   ├── canonical_loader.py # Format-agnostic loader (HEIC, RAW, buffers, EXIF, sRGB)
 │       │   └── rectifier.py      # Classical perspective normalizer & ellipse fitting
 │       ├── metrology/
 │       │   ├── peaks.py          # 2D Taylor-series sub-pixel peak extraction
@@ -104,8 +110,9 @@ target_scorer/
 │       │   └── loss.py           # Adaptive Wing Loss implementation
 │       └── synthetic/
 │           ├── generator.py      # Photorealistic cardboard, bullet, & handwriting synthesis
-│           └── dataset.py        # On-the-fly procedural PyTorch dataset
+│           └── dataset.py        # On-the-fly procedural PyTorch dataset with compression jitter
 ├── tests/
+│   ├── test_canonical_loader.py  # Format-independent ingestion & in-memory buffer test suite
 │   ├── test_low_res_metrology.py # 35-test scoring compliance & metrology test suite
 │   ├── test_camera_angles.py     # Perspective rectification & tilt test suite
 │   └── test_benchmark_low_res.py # 100-target statistical regression benchmark
