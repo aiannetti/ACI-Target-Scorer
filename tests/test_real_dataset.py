@@ -369,6 +369,34 @@ class TestAutoLabeling(unittest.TestCase):
             self.assertEqual(restored.target_type, "B-2")
             self.assertEqual(len(restored.shots), len(ann.shots))
 
+    def test_autolabel_with_redact_pii(self):
+        if not self.calib_dir.exists():
+            self.skipTest(f"Calibration directory '{self.calib_dir}' not found.")
+
+        raw_photo = self.calib_dir / "raw" / "calib_b2_001_raw_photo.jpg"
+        if not raw_photo.exists():
+            self.skipTest(f"Calibration raw photo '{raw_photo}' not found.")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            ann, json_path, review_path = autolabel_target_image(
+                image_source=raw_photo,
+                output_dir=tmp_dir,
+                checkpoint_path=None,
+                target_type="B-2",
+                canvas_size=256,
+                pixels_per_mm=2.0,
+                peak_threshold=0.30,
+                max_shots=10,
+                redact_pii=True,
+            )
+
+            self.assertTrue(json_path.exists())
+            self.assertTrue(review_path.exists())
+            self.assertTrue(ann.metadata.get("redact_pii"))
+
+            restored = TargetAnnotation.from_json(json_path)
+            self.assertTrue(restored.metadata.get("redact_pii"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -61,6 +61,7 @@ def autolabel_cli():
     parser.add_argument("--scale", type=float, default=4.0, help="Pixels per mm metric scale")
     parser.add_argument("--threshold", type=float, default=0.40, help="Peak confidence threshold")
     parser.add_argument("--shots", type=int, default=10, help="Maximum number of shots to detect")
+    parser.add_argument("--redact-pii", action="store_true", default=False, help="Redact competitor margin registration info (Name, NRA#, etc.)")
     args = parser.parse_args(sys.argv[2:])
 
     if not args.image and not args.input_dir:
@@ -90,6 +91,7 @@ def autolabel_cli():
                 pixels_per_mm=args.scale,
                 peak_threshold=args.threshold,
                 max_shots=args.shots,
+                redact_pii=args.redact_pii,
             )
             print(f"    [✓] Auto-labeled {len(ann.shots)} shots -> JSON: {json_p.name} | Review: {rev_p.name}")
         except Exception as e:
@@ -109,6 +111,7 @@ def colab_autolabel_cli():
     parser.add_argument("--gpu", type=str, default="T4", choices=["A100", "H100", "T4", "L4", "G4"], help="Cloud GPU type (default: T4)")
     parser.add_argument("--session", type=str, default=None, help="Custom Colab session name")
     parser.add_argument("--timeout", type=float, default=1800.0, help="Maximum execution timeout in seconds")
+    parser.add_argument("--redact-pii", action="store_true", default=False, help="Redact competitor margin registration info (Name, NRA#, etc.)")
     args = parser.parse_args(sys.argv[2:])
 
     run_colab_autolabel(
@@ -122,6 +125,7 @@ def colab_autolabel_cli():
         gpu=args.gpu,
         session_name=args.session,
         timeout_seconds=args.timeout,
+        redact_pii=args.redact_pii,
     )
 
 

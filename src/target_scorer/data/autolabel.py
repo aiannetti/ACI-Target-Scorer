@@ -35,6 +35,7 @@ def autolabel_target_image(
     bullet_diameter_mm: float = 5.69,
     device_str: Optional[str] = None,
     target_id: Optional[str] = None,
+    redact_pii: bool = False,
 ) -> Tuple[TargetAnnotation, Path, Path]:
     """
     Runs model-assisted auto-labeling on an input target image.
@@ -89,11 +90,6 @@ def autolabel_target_image(
             import uuid
             target_id = f"autolabel_{uuid.uuid4().hex[:8]}"
 
-    # Save canonical image
-    canonical_filename = f"{target_id}_canonical.png"
-    canonical_path = out_dir / canonical_filename
-    cv2.imwrite(str(canonical_path), canonical_bgr)
-
     # 2. Run HighResHeatmapUNet inference
 
     # Preprocess image tensor
@@ -125,6 +121,28 @@ def autolabel_target_image(
     else:
         bull_center = (canvas_size / 2.0, canvas_size / 2.0)
 
+    # Optional Competitor Registration PII Redaction
+    rings_cfg = TargetRingsConfig(target_type=target_type)
+    header_h = 0
+    if redact_pii:
+        margin_mask = np.zeros((canvas_size, canvas_size), dtype=np.uint8)
+        rings_table = rings_cfg.get_rings_table()
+        outer_margin_rad = int(round(rings_table[-1][1] * pixels_per_mm + 12.0 * (pixels_per_mm / 4.0)))
+        bc_int_x, bc_int_y = int(round(bull_center[0])), int(round(bull_center[1]))
+        cv2.circle(margin_mask, (bc_int_x, bc_int_y), outer_margin_rad, 255, -1)
+        header_h = max(28, int(round(bc_int_y - outer_margin_rad + 8)))
+        if header_h > 0:
+            margin_mask[:header_h, :] = 0
+
+        blurred_crop = cv2.GaussianBlur(canonical_bgr, (45, 45), 25.0)
+        pii_zone = (margin_mask == 0)[:, :, np.newaxis]
+        canonical_bgr = np.where(pii_zone, blurred_crop, canonical_bgr)
+
+    # Save canonical image (redacted if redact_pii=True)
+    canonical_filename = f"{target_id}_canonical.png"
+    canonical_path = out_dir / canonical_filename
+    cv2.imwrite(str(canonical_path), canonical_bgr)
+
     # Score detected shots
     peaks_tuples = [(p[0], p[1], p[2]) for p in detected_peaks]
     shot_results, group_metrics = score_target_group(
@@ -132,7 +150,7 @@ def autolabel_target_image(
         bullseye_peak=bull_center,
         pixels_per_mm=pixels_per_mm,
         bullet_diameter_mm=bullet_diameter_mm,
-        rings_cfg=TargetRingsConfig(target_type=target_type),
+        rings_cfg=rings_cfg,
         distance_yards=16.67
     )
 
@@ -161,6 +179,7 @@ def autolabel_target_image(
         pixels_per_mm=pixels_per_mm,
         metadata={
             "autolabeled": True,
+            "redact_pii": redact_pii,
             "total_score": group_metrics.total_score,
             "x_count": group_metrics.x_count,
             "extreme_spread_mm": round(group_metrics.extreme_spread_mm, 2),
@@ -175,6 +194,13 @@ def autolabel_target_image(
     # 4. Generate Visual Verification Review Card
     review_bgr = canonical_bgr.copy()
     sf = canvas_size / 512.0
+
+    if redact_pii:
+        badge_y = max(18, int(round(header_h * 0.6)))
+        cv2.putText(
+            review_bgr, "[COMPETITOR REGISTRATION REDACTED]", (18, badge_y),
+            cv2.FONT_HERSHEY_SIMPLEX, max(0.32, 0.38 * sf), (130, 130, 140), 1, cv2.LINE_AA
+        )
 
     # Draw bullseye center crosshair (gold)
     bc_x, bc_y = int(round(bull_center[0])), int(round(bull_center[1]))

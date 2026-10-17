@@ -326,6 +326,7 @@ def run_colab_autolabel(
     gpu: str = "T4",
     session_name: Optional[str] = None,
     timeout_seconds: float = 1800.0,
+    redact_pii: bool = False,
 ) -> str:
     """
     Executes assisted auto-labeling on an entire directory of smartphone photographs
@@ -394,6 +395,8 @@ def run_colab_autolabel(
         else:
             ckpt_remote_arg = ""
 
+        redact_remote_arg = "    '--redact-pii',\n" if redact_pii else ""
+
         # 4. Setup and run auto-labeling
         print("[4/5] Running assisted auto-labeling on cloud GPU...")
         autolabel_script = (
@@ -411,6 +414,7 @@ def run_colab_autolabel(
             f"    '--canvas-size', '{canvas_size}',\n"
             f"    '--scale', '{pixels_per_mm}',\n"
             f"    '--threshold', '{threshold}',\n"
+            f"{redact_remote_arg}"
             f"    {ckpt_remote_arg}\n"
             f"]\n"
             "proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)\n"

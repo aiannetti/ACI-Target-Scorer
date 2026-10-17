@@ -451,7 +451,8 @@ target-scorer colab-autolabel \
     --input-dir /path/to/phone_targets \
     --output-dir datasets/autolabeled_targets \
     --target B-2 \
-    --gpu T4
+    --gpu T4 \
+    --redact-pii
 ```
 
 1. Automatically compresses and uploads your local photo directory.
@@ -551,14 +552,15 @@ target-scorer autolabel \
     --shots 10
 ```
 
-#### B. Batch Auto-Label an Entire Directory
+#### B. Batch Auto-Label an Entire Directory (with Competitor PII Redaction)
 ```bash
 target-scorer autolabel \
-    --input-dir /path/to/range_photos/ \
+    --input-dir range_photos/ \
     --target B-3 \
     --output-dir datasets/real_targets \
     --checkpoint weights/target_scoring_hrnet_1024_best.pt \
-    --threshold 0.40
+    --threshold 0.40 \
+    --redact-pii
 ```
 
 Each processed image generates:
