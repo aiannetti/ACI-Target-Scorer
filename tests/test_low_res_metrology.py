@@ -304,6 +304,22 @@ class TestLowResOfficialNRAScoring(unittest.TestCase):
         label = self._eval_single_shot(41.50, self.cfg_b3)
         self.assertEqual(label, "9")
 
+    def test_sc_06_b3_scoring_all_rings(self):
+        """SC-06: Validates full NRA Rule 4.3 ring hierarchy for B-3 target (X, 10, 8, 7, 6, miss)."""
+        # Bullet radius: 2.845 mm
+        # X ring: <= 11.43 mm -> center 12.0 mm -> gauge 9.155 mm -> X
+        self.assertEqual(self._eval_single_shot(12.00, self.cfg_b3), "X")
+        # 10 ring: <= 22.86 mm -> center 25.0 mm -> gauge 22.155 mm -> 10
+        self.assertEqual(self._eval_single_shot(25.00, self.cfg_b3), "10")
+        # 8 ring: <= 56.642 mm -> center 59.0 mm -> gauge 56.155 mm -> 8
+        self.assertEqual(self._eval_single_shot(59.00, self.cfg_b3), "8")
+        # 7 ring: <= 77.978 mm -> center 80.0 mm -> gauge 77.155 mm -> 7
+        self.assertEqual(self._eval_single_shot(80.00, self.cfg_b3), "7")
+        # 6 ring: <= 105.664 mm -> center 108.0 mm -> gauge 105.155 mm -> 6
+        self.assertEqual(self._eval_single_shot(108.00, self.cfg_b3), "6")
+        # Miss: > 105.664 mm -> center 110.0 mm -> gauge 107.155 mm -> 0
+        self.assertEqual(self._eval_single_shot(110.00, self.cfg_b3), "0")
+
     def test_ballistics_dispersion_calculations(self):
         """Validates Extreme Spread, Mean Radius, Windage/Elevation, and MOA calculations."""
         # 4 shots placed at (+15mm, 0), (-15mm, 0), (0, +10mm), (0, -10mm)
