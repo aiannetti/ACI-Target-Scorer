@@ -46,6 +46,56 @@ def rectify_cli():
         print(f"    [!] Warning: {result.warning}")
 
 
+def autolabel_cli():
+    import argparse
+    from pathlib import Path
+    from target_scorer.data.autolabel import autolabel_target_image
+
+    parser = argparse.ArgumentParser(prog="target-scorer autolabel", description="Assisted Auto-Labeling for Real Target Datasets")
+    parser.add_argument("--image", type=str, default=None, help="Path to single input target photograph")
+    parser.add_argument("--input-dir", type=str, default=None, help="Directory of target photographs to batch auto-label")
+    parser.add_argument("--output-dir", type=str, default="datasets/real_targets", help="Directory to save annotations and review cards")
+    parser.add_argument("--target", type=str, default="B-2", choices=["B-2", "B-3", "b-2", "b-3"], help="NRA target type")
+    parser.add_argument("--checkpoint", type=str, default="weights/target_scoring_hrnet_1024_best.pt", help="Path to model weights")
+    parser.add_argument("--canvas-size", type=int, default=1024, help="Canonical canvas dimension")
+    parser.add_argument("--scale", type=float, default=4.0, help="Pixels per mm metric scale")
+    parser.add_argument("--threshold", type=float, default=0.40, help="Peak confidence threshold")
+    parser.add_argument("--shots", type=int, default=10, help="Maximum number of shots to detect")
+    args = parser.parse_args(sys.argv[2:])
+
+    if not args.image and not args.input_dir:
+        print("[-] Error: Either --image or --input-dir must be specified.")
+        sys.exit(1)
+
+    targets_to_process = []
+    if args.image:
+        targets_to_process.append(Path(args.image))
+    if args.input_dir:
+        in_p = Path(args.input_dir)
+        for ext in ("*.heic", "*.HEIC", "*.jpg", "*.jpeg", "*.JPG", "*.png", "*.PNG", "*.tiff", "*.tif", "*.dng", "*.DNG", "*.webp"):
+            targets_to_process.extend(in_p.glob(ext))
+
+    targets_to_process = sorted(list(set(targets_to_process)))
+    print(f"[+] Found {len(targets_to_process)} target(s) to auto-label.")
+
+    for i, target_file in enumerate(targets_to_process, 1):
+        print(f"[{i}/{len(targets_to_process)}] Processing '{target_file.name}'...")
+        try:
+            ann, json_p, rev_p = autolabel_target_image(
+                image_source=target_file,
+                output_dir=args.output_dir,
+                checkpoint_path=args.checkpoint,
+                target_type=args.target.upper(),
+                canvas_size=args.canvas_size,
+                pixels_per_mm=args.scale,
+                peak_threshold=args.threshold,
+                max_shots=args.shots,
+            )
+            print(f"    [✓] Auto-labeled {len(ann.shots)} shots -> JSON: {json_p.name} | Review: {rev_p.name}")
+        except Exception as e:
+            print(f"    [-] Failed to process '{target_file.name}': {e}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="target-scorer",
@@ -56,6 +106,7 @@ def main():
     subparsers.add_parser("train", help="Run procedural synthetic training pipeline")
     subparsers.add_parser("colab-train", help="Run cloud GPU training via Google Colab CLI (A100/T4)")
     subparsers.add_parser("rectify", help="Run standalone geometric rectification")
+    subparsers.add_parser("autolabel", help="Run model-assisted active learning and auto-labeling")
 
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         parser.print_help()
@@ -74,6 +125,8 @@ def main():
         colab_main()
     elif subcommand == "rectify":
         rectify_cli()
+    elif subcommand == "autolabel":
+        autolabel_cli()
     else:
         parser.print_help()
         sys.exit(1)

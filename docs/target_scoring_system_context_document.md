@@ -215,11 +215,56 @@ target-scorer train \
     --initial-weights weights/target_scoring_hrnet_1024_best.pt \
     --checkpoint weights/target_scoring_hrnet_1024_best.pt
 
+# # Pure real target fine-tuning (Option B: Rapid domain adaptation to range textures)
+target-scorer train \
+    --canvas-size 1024 \
+    --scale 4.0 \
+    --epochs 10 \
+    --batch-size 2 \
+    --lr 5.0e-5 \
+    --sigma 3.2 \
+    --real-data-dir datasets/calibration_targets \
+    --real-ratio 1.0 \
+    --initial-weights weights/target_scoring_hrnet_1024_best.pt \
+    --checkpoint weights/target_scoring_hrnet_1024_real_adapted.pt
+
+# Hybrid blended training (Option A: 70% synthetic + 30% real)
+target-scorer train \
+    --canvas-size 1024 \
+    --scale 4.0 \
+    --epochs 15 \
+    --batch-size 2 \
+    --lr 1.0e-4 \
+    --sigma 3.2 \
+    --real-data-dir datasets/calibration_targets \
+    --real-ratio 0.35 \
+    --initial-weights weights/target_scoring_hrnet_1024_best.pt \
+    --checkpoint weights/target_scoring_hrnet_1024_hybrid.pt
+
 # Fast 512x512 baseline training
 target-scorer train --canvas-size 512 --epochs 15 --batch-size 4
 ```
 
-### D. Standalone Geometric Rectification (`target-scorer rectify`)
+### D. Assisted Auto-Labeling & Active Learning (`target-scorer autolabel`)
+```bash
+# Auto-label a single smartphone photograph (unwarps, detects shots, renders review card)
+target-scorer autolabel \
+    --image /path/to/phone_target.jpg \
+    --target B-2 \
+    --output-dir datasets/real_targets \
+    --checkpoint weights/target_scoring_hrnet_1024_best.pt \
+    --threshold 0.40
+
+# Batch auto-label an entire directory of target photographs
+target-scorer autolabel \
+    --input-dir /path/to/range_photos/ \
+    --target B-3 \
+    --output-dir datasets/real_targets \
+    --checkpoint weights/target_scoring_hrnet_1024_best.pt \
+    --threshold 0.40
+```
+
+### E. Standalone Geometric Rectification (`target-scorer rectify`)
 ```bash
 # Rectify an Apple iPhone HEIC photo (auto-corrects EXIF orientation and Display P3 gamut)
 target-scorer rectify --image target.heic --target B-2 --canvas-size 1024 --scale 4.0 --output rectified.png --debug debug.png
@@ -240,7 +285,7 @@ result = rectifier.rectify(frame_bgr)  # Accepts np.ndarray directly
 canonical_crop = result.canonical_crop
 ```
 
-### E. Python Environment Setup via `uv` (PyTorch & Platform Compatibility)
+### F. Python Environment Setup via `uv` (PyTorch & Platform Compatibility)
 
 #### Why `uv` is Required
 1. **PyTorch Wheel Compatibility Lag:** Official PyTorch pre-compiled binaries and CUDA distributions (e.g., `cu121`, `cu124`) lag behind modern bleeding-edge Python releases (Python 3.13, 3.14+). Attempting to install PyTorch on bleeding-edge Python yields:
@@ -290,5 +335,6 @@ python -c "import sys, torch; print(f'Python: {sys.version.split()[0]} | CUDA: {
 [Sprint 5: Privacy & PII Masking]           --> COMPLETED (--redact-pii margin masking)
 [Sprint 6: Cloud Orchestration]             --> COMPLETED (Colab CLI automated runner)
 [Sprint 7: Format-Agnostic Ingestion]       --> COMPLETED (HEIC, RAW/DNG, Picamera2 memory buffers)
-[Sprint 8: Edge Deployment]                 --> PENDING (ONNX conversion for Pi 4)
+[Sprint 8: Real Target Training & Tooling]  --> COMPLETED (target_scorer/data/, autolabel, hybrid dataset)
+[Sprint 9: Edge Deployment]                 --> PENDING (ONNX conversion for Pi 4)
 ```

@@ -15,6 +15,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 
 from target_scorer.config import TrainConfig
+from target_scorer.data.hybrid_dataset import HybridTargetDataset
 from target_scorer.metrology.peaks import extract_subpixel_peaks
 from target_scorer.models.loss import AdaptiveWingLoss
 from target_scorer.models.unet import HighResHeatmapUNet
@@ -178,6 +179,8 @@ def run_training(
     num_workers: int = 2,
     sigma: Optional[float] = None,
     initial_weights: Optional[str] = None,
+    real_data_dir: Optional[str] = None,
+    real_ratio: float = 0.35,
 ) -> str:
     """Initializes and runs the full end-to-end training and evaluation pipeline."""
     if canvas_size % 8 != 0:
@@ -242,11 +245,30 @@ def run_training(
     print(f"  Metrology Scale:     {config.pixels_per_mm} pixels/mm")
     print(f"  Mixed Precision:     {amp_status}")
     print(f"  Worker Threads:      {config.num_workers} (Background CPU rendering)")
+    if real_data_dir:
+        print(f"  Real Data Directory: {real_data_dir} (Ratio: {real_ratio:.2f})")
     print(f"  A-Wing Parameters:   omega={config.awing_omega}, alpha={config.awing_alpha}, theta={config.awing_theta}")
     print("=" * 72)
 
-    train_dataset = SyntheticTargetDataset(size=config.train_samples_per_epoch, config=config, is_train=True)
-    val_dataset = SyntheticTargetDataset(size=config.val_samples_per_epoch, config=config, is_train=False)
+    if real_data_dir is not None:
+        print(f"[*] Ingesting real target dataset from '{real_data_dir}' (Real Ratio: {real_ratio:.2f})")
+        train_dataset = HybridTargetDataset(
+            real_data_dir=real_data_dir,
+            config=config,
+            size=config.train_samples_per_epoch,
+            real_ratio=real_ratio,
+            is_train=True,
+        )
+        val_dataset = HybridTargetDataset(
+            real_data_dir=real_data_dir,
+            config=config,
+            size=config.val_samples_per_epoch,
+            real_ratio=real_ratio,
+            is_train=False,
+        )
+    else:
+        train_dataset = SyntheticTargetDataset(size=config.train_samples_per_epoch, config=config, is_train=True)
+        val_dataset = SyntheticTargetDataset(size=config.val_samples_per_epoch, config=config, is_train=False)
 
     train_loader = DataLoader(
         train_dataset, 
@@ -355,6 +377,8 @@ def main():
     parser.add_argument("--amp", action="store_true", default=True, help="Enable automatic mixed precision (AMP)")
     parser.add_argument("--no-amp", dest="amp", action="store_false", help="Disable automatic mixed precision")
     parser.add_argument("--initial-weights", type=str, default=None, help="Path to existing weights checkpoint to warm-start/fine-tune from")
+    parser.add_argument("--real-data-dir", type=str, default=None, help="Path to real target dataset directory or manifest (enables real/hybrid training)")
+    parser.add_argument("--real-ratio", type=float, default=0.35, help="Sampling probability for real target images (1.0 = pure real fine-tuning, 0.35 = hybrid)")
 
     args = parser.parse_args()
 
@@ -371,6 +395,8 @@ def main():
         num_workers=args.workers,
         sigma=args.sigma,
         initial_weights=args.initial_weights,
+        real_data_dir=args.real_data_dir,
+        real_ratio=args.real_ratio,
     )
 
 

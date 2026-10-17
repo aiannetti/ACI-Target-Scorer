@@ -39,6 +39,8 @@ def run_colab_training(
     timeout_seconds: float = 3600.0,
     sigma: Optional[float] = None,
     initial_weights: Optional[str] = None,
+    real_data_dir: Optional[str] = None,
+    real_ratio: float = 0.35,
 ) -> str:
     """
     End-to-end cloud training orchestration using Google Colab CLI:
@@ -103,11 +105,26 @@ def run_colab_training(
             cmd_upload_w = [colab_bin, "upload", initial_weights, "/content/initial_weights.pt", "-s", session_name]
             subprocess.run(cmd_upload_w, check=True)
 
+        if real_data_dir is not None and os.path.exists(real_data_dir):
+            real_data_zip = os.path.join(project_root, "real_data_bundle.zip")
+            if os.path.exists(real_data_zip):
+                os.remove(real_data_zip)
+            print(f"[*] Packaging real target dataset from '{real_data_dir}'...")
+            shutil.make_archive(os.path.splitext(real_data_zip)[0], 'zip', real_data_dir)
+            print(f"[*] Uploading real dataset archive ({os.path.getsize(real_data_zip) / (1024**2):.1f} MB) to Colab VM...")
+            cmd_upload_data = [colab_bin, "upload", real_data_zip, "/content/real_data.zip", "-s", session_name]
+            subprocess.run(cmd_upload_data, check=True)
+            if os.path.exists(real_data_zip):
+                os.remove(real_data_zip)
+
         # 4. Unpack and install on remote VM
         print("[4/6] Initializing remote environment on Colab VM...")
         setup_script = (
-            "import subprocess, sys\n"
+            "import subprocess, sys, os\n"
             "subprocess.run(['unzip', '-q', '-o', '/content/target_scorer_colab_bundle.zip', '-d', '/content/'], check=True)\n"
+            "if os.path.exists('/content/real_data.zip'):\n"
+            "    subprocess.run(['unzip', '-q', '-o', '/content/real_data.zip', '-d', '/content/real_data'], check=True)\n"
+            "    print('[Colab VM] Real target dataset extracted.')\n"
             "subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', '-e', '/content/target_scorer'], check=True)\n"
             "print('[Colab VM] Target Scorer installed successfully.')\n"
         )
@@ -124,6 +141,7 @@ def run_colab_training(
         print(f"[5/6] Executing {canvas_size}x{canvas_size} training on NVIDIA {gpu}...")
         sigma_arg = f"    '--sigma', '{sigma}',\n" if sigma is not None else ""
         init_w_arg = "    '--initial-weights', '/content/initial_weights.pt',\n" if (initial_weights and os.path.exists(initial_weights)) else ""
+        real_arg = f"    '--real-data-dir', '/content/real_data',\n    '--real-ratio', '{real_ratio}',\n" if (real_data_dir and os.path.exists(real_data_dir)) else ""
         train_script = (
             "import subprocess, sys, os\n"
             "os.makedirs('/content/target_scorer/weights', exist_ok=True)\n"
@@ -138,6 +156,7 @@ def run_colab_training(
             f"    '--lr', '{learning_rate}',\n"
             f"{sigma_arg}"
             f"{init_w_arg}"
+            f"{real_arg}"
             f"    '--checkpoint', '/content/target_scorer/weights/target_scoring_hrnet_{canvas_size}_best.pt',\n"
             f"    '--amp',\n"
             f"]\n"
@@ -221,6 +240,8 @@ def main():
     parser.add_argument("--sigma", type=float, default=None, help="Gaussian heatmap sigma in pixels (e.g. 3.2)")
     parser.add_argument("--timeout", type=float, default=3600.0, help="Maximum execution timeout in seconds")
     parser.add_argument("--initial-weights", type=str, default=None, help="Path to local weights checkpoint to warm-start/fine-tune from in Colab")
+    parser.add_argument("--real-data-dir", type=str, default=None, help="Path to local real target dataset directory to upload for training")
+    parser.add_argument("--real-ratio", type=float, default=0.35, help="Sampling probability for real target images (1.0 = pure real fine-tuning, 0.35 = hybrid)")
 
     args = parser.parse_args()
 
@@ -238,6 +259,8 @@ def main():
         timeout_seconds=args.timeout,
         sigma=args.sigma,
         initial_weights=args.initial_weights,
+        real_data_dir=args.real_data_dir,
+        real_ratio=args.real_ratio,
     )
 
 

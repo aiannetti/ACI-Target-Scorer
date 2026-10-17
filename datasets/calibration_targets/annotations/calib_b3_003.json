@@ -1,0 +1,123 @@
+{
+  "version": "1.0",
+  "target_id": "calib_b3_003",
+  "image_filename": "calib_b3_003_canonical_1024.png",
+  "canvas_size": 1024,
+  "pixels_per_mm": 4.0,
+  "target_type": "B-3",
+  "bullseye_center": [
+    512.0,
+    512.0
+  ],
+  "shots": [
+    {
+      "id": 1,
+      "center_x": 584.5545364869356,
+      "center_y": 455.08024371191397,
+      "score": 10,
+      "is_x": false,
+      "caliber_mm": 5.69,
+      "shot_type": "single",
+      "confidence": 1.0
+    },
+    {
+      "id": 2,
+      "center_x": 556.1345892614794,
+      "center_y": 420.9372002809855,
+      "score": 10,
+      "is_x": false,
+      "caliber_mm": 5.69,
+      "shot_type": "single",
+      "confidence": 1.0
+    },
+    {
+      "id": 3,
+      "center_x": 556.4465946281184,
+      "center_y": 465.48323927572943,
+      "score": 10,
+      "is_x": false,
+      "caliber_mm": 5.69,
+      "shot_type": "single",
+      "confidence": 1.0
+    },
+    {
+      "id": 4,
+      "center_x": 651.1113255978383,
+      "center_y": 479.42032443080365,
+      "score": 9,
+      "is_x": false,
+      "caliber_mm": 5.69,
+      "shot_type": "single",
+      "confidence": 1.0
+    },
+    {
+      "id": 5,
+      "center_x": 514.638791256665,
+      "center_y": 507.45435489963387,
+      "score": 10,
+      "is_x": true,
+      "caliber_mm": 5.69,
+      "shot_type": "single",
+      "confidence": 1.0
+    },
+    {
+      "id": 6,
+      "center_x": 304.31947751579236,
+      "center_y": 566.7727804766454,
+      "score": 8,
+      "is_x": false,
+      "caliber_mm": 5.69,
+      "shot_type": "single",
+      "confidence": 1.0
+    },
+    {
+      "id": 7,
+      "center_x": 415.5662880129232,
+      "center_y": 492.5136917232366,
+      "score": 10,
+      "is_x": false,
+      "caliber_mm": 5.69,
+      "shot_type": "single",
+      "confidence": 1.0
+    },
+    {
+      "id": 8,
+      "center_x": 569.0893781585943,
+      "center_y": 500.10946587971705,
+      "score": 10,
+      "is_x": false,
+      "caliber_mm": 5.69,
+      "shot_type": "double_primary",
+      "confidence": 1.0
+    },
+    {
+      "id": 9,
+      "center_x": 567.5672664302682,
+      "center_y": 517.8289646049506,
+      "score": 10,
+      "is_x": true,
+      "caliber_mm": 5.69,
+      "shot_type": "double_secondary",
+      "confidence": 1.0
+    },
+    {
+      "id": 10,
+      "center_x": 690.689004685563,
+      "center_y": 387.2236020311075,
+      "score": 8,
+      "is_x": false,
+      "caliber_mm": 5.69,
+      "shot_type": "keyhole",
+      "confidence": 1.0
+    }
+  ],
+  "metadata": {
+    "total_score": 95,
+    "x_count": 2,
+    "extreme_spread_mm": 106.51,
+    "mean_radius_mm": 22.89,
+    "pitch_deg": 20.0,
+    "yaw_deg": 8.0,
+    "roll_deg": -4.0
+  }
+}

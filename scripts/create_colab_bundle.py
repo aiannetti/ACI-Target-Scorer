@@ -26,6 +26,7 @@ EXCLUDE_DIRS = {
     "target_scorer.egg-info",
     "weights",
     "visual_inspection_reports",
+    "datasets",
 }
 
 EXCLUDE_EXTS = {

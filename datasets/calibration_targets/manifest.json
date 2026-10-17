@@ -1,0 +1,66 @@
+{
+  "version": "1.0",
+  "description": "Sample calibration targets for real-world target scoring training & active learning.",
+  "targets": [
+    {
+      "target_id": "calib_b2_001",
+      "target_type": "B-2",
+      "canonical_image": "calib_b2_001_canonical_1024.png",
+      "raw_photo": "calib_b2_001_raw_photo.jpg",
+      "annotation": "calib_b2_001.json",
+      "num_shots": 10,
+      "total_score": 96,
+      "x_count": 0
+    },
+    {
+      "target_id": "calib_b2_002",
+      "target_type": "B-2",
+      "canonical_image": "calib_b2_002_canonical_1024.png",
+      "raw_photo": "calib_b2_002_raw_photo.jpg",
+      "annotation": "calib_b2_002.json",
+      "num_shots": 10,
+      "total_score": 89,
+      "x_count": 0
+    },
+    {
+      "target_id": "calib_b2_003",
+      "target_type": "B-2",
+      "canonical_image": "calib_b2_003_canonical_1024.png",
+      "raw_photo": "calib_b2_003_raw_photo.jpg",
+      "annotation": "calib_b2_003.json",
+      "num_shots": 10,
+      "total_score": 77,
+      "x_count": 0
+    },
+    {
+      "target_id": "calib_b3_001",
+      "target_type": "B-3",
+      "canonical_image": "calib_b3_001_canonical_1024.png",
+      "raw_photo": "calib_b3_001_raw_photo.jpg",
+      "annotation": "calib_b3_001.json",
+      "num_shots": 10,
+      "total_score": 85,
+      "x_count": 6
+    },
+    {
+      "target_id": "calib_b3_002",
+      "target_type": "B-3",
+      "canonical_image": "calib_b3_002_canonical_1024.png",
+      "raw_photo": "calib_b3_002_raw_photo.jpg",
+      "annotation": "calib_b3_002.json",
+      "num_shots": 10,
+      "total_score": 95,
+      "x_count": 6
+    },
+    {
+      "target_id": "calib_b3_003",
+      "target_type": "B-3",
+      "canonical_image": "calib_b3_003_canonical_1024.png",
+      "raw_photo": "calib_b3_003_raw_photo.jpg",
+      "annotation": "calib_b3_003.json",
+      "num_shots": 10,
+      "total_score": 95,
+      "x_count": 2
+    }
+  ]
+}

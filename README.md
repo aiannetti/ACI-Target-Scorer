@@ -93,11 +93,16 @@ target_scorer/
 ├── src/
 │   └── target_scorer/
 │       ├── __init__.py           # Package exports (lazy loaders for clean imports)
-│       ├── cli.py                # Unified CLI (infer, train, colab-train, rectify)
+│       ├── cli.py                # Unified CLI (infer, train, colab-train, rectify, autolabel)
 │       ├── config.py             # TargetConfig, TrainConfig, TargetRingsConfig
 │       ├── infer.py              # End-to-end inference & metrology pipeline
-│       ├── train.py              # Procedural synthetic training pipeline
+│       ├── train.py              # Synthetic and real/hybrid training pipeline
 │       ├── colab_runner.py       # Automated Google Colab CLI cloud orchestrator
+│       ├── data/
+│       │   ├── schema.py         # TargetAnnotation & AnnotatedShot schema & JSON I/O
+│       │   ├── real_dataset.py   # PyTorch dataset for real target photographs & augmentations
+│       │   ├── hybrid_dataset.py # Blended sampler (Option A hybrid & Option B pure real)
+│       │   └── autolabel.py      # Active learning model-assisted auto-labeler & review card generator
 │       ├── geometry/
 │       │   ├── canonical_loader.py # Format-agnostic loader (HEIC, RAW, buffers, EXIF, sRGB)
 │       │   └── rectifier.py      # Classical perspective normalizer & ellipse fitting
@@ -111,7 +116,10 @@ target_scorer/
 │       └── synthetic/
 │           ├── generator.py      # Photorealistic cardboard, bullet, & handwriting synthesis
 │           └── dataset.py        # On-the-fly procedural PyTorch dataset with compression jitter
+├── datasets/
+│   └── calibration_targets/      # Sample calibration targets with raw photos & ground truth JSON
 ├── tests/
+│   ├── test_real_dataset.py      # Real dataset, schema, hybrid, and autolabel test suite
 │   ├── test_canonical_loader.py  # Format-independent ingestion & in-memory buffer test suite
 │   ├── test_low_res_metrology.py # 35-test scoring compliance & metrology test suite
 │   ├── test_camera_angles.py     # Perspective rectification & tilt test suite
@@ -409,6 +417,8 @@ target-scorer colab-train \
 | `--sigma` | `None` | Gaussian sigma in pixels ($3.2$ for 1024, $2.8$ for 800) |
 | `--gpu` | `A100` | Cloud accelerator: `A100`, `T4`, or `L4` |
 | `--initial-weights` | `None` | Local `.pt` checkpoint to upload for warm-start fine-tuning |
+| `--real-data-dir` | `None` | Local directory of real target annotations to upload & train |
+| `--real-ratio` | `0.35` | Real target sampling probability (1.0 = pure real, 0.35 = hybrid) |
 | `--session` | `auto` | Custom Colab session name |
 | `--timeout` | `3600` | Maximum job execution timeout in seconds |
 
@@ -416,7 +426,7 @@ target-scorer colab-train \
 
 ### 3. Local Model Training (`target-scorer train`)
 
-Train or fine-tune models directly on your local workstation.
+Train or fine-tune models directly on your local workstation. Supports 100% synthetic procedural training, pure real target fine-tuning (Option B), or blended hybrid training (Option A).
 
 #### A. Warm-Start Fine-Tuning Locally ($1024 \times 1024$ on GTX 1060 6GB)
 ```bash
@@ -432,7 +442,39 @@ target-scorer train \
 ```
 *(Note: `--batch-size 2` is used to fit 1024x1024 feature maps within 6GB VRAM on GTX 1060).*
 
-#### B. Fast Baseline Training ($512 \times 512$)
+#### B. Pure Real Target Fine-Tuning (Option B: Rapid Domain Adaptation)
+Fine-tune directly on real target photographs to rapidly adapt weights to real cardboard fibers, range shadows, and physical bullet tears:
+```bash
+target-scorer train \
+    --canvas-size 1024 \
+    --scale 4.0 \
+    --epochs 10 \
+    --batch-size 2 \
+    --lr 5.0e-5 \
+    --sigma 3.2 \
+    --real-data-dir datasets/calibration_targets \
+    --real-ratio 1.0 \
+    --initial-weights weights/target_scoring_hrnet_1024_best.pt \
+    --checkpoint weights/target_scoring_hrnet_1024_real_adapted.pt
+```
+
+#### C. Hybrid Blended Training (Option A: 70% Synthetic + 30% Real)
+Blend large-scale procedural synthetic edge cases with real paper photographs to maintain maximum geometric diversity while grounding in real range photography:
+```bash
+target-scorer train \
+    --canvas-size 1024 \
+    --scale 4.0 \
+    --epochs 15 \
+    --batch-size 2 \
+    --lr 1.0e-4 \
+    --sigma 3.2 \
+    --real-data-dir datasets/calibration_targets \
+    --real-ratio 0.35 \
+    --initial-weights weights/target_scoring_hrnet_1024_best.pt \
+    --checkpoint weights/target_scoring_hrnet_1024_hybrid.pt
+```
+
+#### D. Fast Baseline Training ($512 \times 512$)
 ```bash
 target-scorer train \
     --canvas-size 512 \
@@ -442,7 +484,7 @@ target-scorer train \
     --checkpoint weights/target_scoring_hrnet_512_best.pt
 ```
 
-#### C. Ultra-Fast Verification Sweep ($256 \times 256$ on CPU)
+#### E. Ultra-Fast Verification Sweep ($256 \times 256$ on CPU)
 ```bash
 target-scorer train \
     --canvas-size 256 \
@@ -455,7 +497,41 @@ target-scorer train \
 
 ---
 
-### 4. Standalone Target Rectification (`target-scorer rectify`)
+### 4. Assisted Auto-Labeling & Active Learning (`target-scorer autolabel`)
+
+Accelerate dataset creation by using the trained model to propose candidate bullet hole locations and official NRA scores on newly photographed target cards. Generates standardized JSON annotations and visual human-in-the-loop review cards:
+
+#### A. Auto-Label a Single Target Photograph
+```bash
+target-scorer autolabel \
+    --image /path/to/phone_target.jpg \
+    --target B-2 \
+    --output-dir datasets/real_targets \
+    --checkpoint weights/target_scoring_hrnet_1024_best.pt \
+    --canvas-size 1024 \
+    --scale 4.0 \
+    --threshold 0.40 \
+    --shots 10
+```
+
+#### B. Batch Auto-Label an Entire Directory
+```bash
+target-scorer autolabel \
+    --input-dir /path/to/range_photos/ \
+    --target B-3 \
+    --output-dir datasets/real_targets \
+    --checkpoint weights/target_scoring_hrnet_1024_best.pt \
+    --threshold 0.40
+```
+
+Each processed image generates:
+1. `*_canonical.png`: Unwarped $1024 \times 1024$ canonical crop at $4.0\text{ px/mm}$.
+2. `*.json`: Standardized `TargetAnnotation` schema containing sub-pixel coordinates, ring scores, and target metadata.
+3. `*_review.png`: High-resolution review card with green crosshairs, shot IDs, and ring scores for rapid human verification.
+
+---
+
+### 5. Standalone Target Rectification (`target-scorer rectify`)
 
 Unwarp perspective distortion and extract an orientation-corrected, metric-calibrated canonical crop across all supported formats (HEIC, RAW/DNG, WebP, PNG, JPEG, or stdin):
 
@@ -509,11 +585,17 @@ cv2.imwrite("canonical_1024.png", result.canonical_crop)
 
 ## Running Automated Tests
 
-Run the full battery of 41 unit and regression tests:
+Run the full battery of 54 unit and regression tests:
 
 ```bash
-# Run the complete test suite:
+# Run the complete test suite (54 tests):
 ./target_env/bin/python3 -m unittest discover tests/ -v
+
+# Run real dataset ingestion, schema, and active learning tests (11 tests):
+./target_env/bin/python3 -m unittest tests/test_real_dataset.py -v
+
+# Run format-independent ingestion & in-memory buffer tests (7 tests):
+./target_env/bin/python3 -m unittest tests/test_canonical_loader.py -v
 
 # Run metrology and scoring assertions (35 tests):
 ./target_env/bin/python3 -m unittest tests/test_low_res_metrology.py -v
