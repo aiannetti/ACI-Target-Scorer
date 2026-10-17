@@ -50,14 +50,12 @@ def generate_synthetic_demo_target(
         img, center, _ = draw_standard_bullseye(img, cfg)
 
         cx, cy = center
-        scale_ratio = pixels_per_mm / 4.0
-        demo_shots = [
-            (cx + 6.0 * scale_ratio, cy - 8.0 * scale_ratio),
-            (cx - 18.0 * scale_ratio, cy + 16.0 * scale_ratio),
-            (cx - 28.0 * scale_ratio, cy + 24.0 * scale_ratio),
-            (cx + 38.0 * scale_ratio, cy + 30.0 * scale_ratio),
-            (cx - 55.0 * scale_ratio, cy - 35.0 * scale_ratio),
+        # 10 official competition shots with millimeter offsets calibrated across B-2 & B-3
+        demo_offsets_mm = [
+            (1.5, -2.0), (-3.0, 3.5), (5.5, 4.0), (-6.0, -5.0), (8.0, -6.5),
+            (-9.5, 8.0), (12.0, 7.0), (-14.5, -8.0), (16.0, -11.0), (-18.5, 14.0)
         ]
+        demo_shots = [(cx + dx * pixels_per_mm, cy + dy * pixels_per_mm) for dx, dy in demo_offsets_mm]
 
         for sx, sy in demo_shots:
             stamp_bullet_hole(img, (sx, sy), cfg, raggedness=1.0)
