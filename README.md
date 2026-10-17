@@ -235,25 +235,54 @@ Subcommands:
 
 ### 1. Scoring & Metrology (`target-scorer infer`)
 
-Score target photographs or generate photorealistic synthetic competition demo cards.
+Score real target photographs across any format or generate photorealistic synthetic competition demo cards.
 
-#### A. Score a Real Target Photo ($1024 \times 1024$ Competition Standard)
+#### A. Score Real Target Photographs (HEIC, RAW/DNG, WebP, PNG, JPEG)
+The engine automatically detects and unifies all mobile, desktop, and professional photography formats:
+
 ```bash
+# Score an Apple iPhone HEIC photograph (auto-corrected for EXIF rotation & Display P3 gamut)
 target-scorer infer \
-    --image /path/to/target_photo.jpg \
+    --image /path/to/target.heic \
     --target B-2 \
     --checkpoint weights/target_scoring_hrnet_1024_best.pt \
     --canvas-size 1024 \
     --scale 4.0 \
     --shots 10 \
-    --output scored_target_b2.png
+    --output scored_target_heic.png
+
+# Score a professional Camera RAW / Apple ProRAW DNG file
+target-scorer infer \
+    --image /path/to/target.dng \
+    --target B-2 \
+    --checkpoint weights/target_scoring_hrnet_1024_best.pt \
+    --canvas-size 1024 \
+    --scale 4.0 \
+    --output scored_target_dng.png
+
+# Score a lossless WebP, PNG, or standard JPEG photo
+target-scorer infer \
+    --image /path/to/target.webp \
+    --target B-3 \
+    --checkpoint weights/target_scoring_hrnet_1024_best.pt \
+    --canvas-size 1024 \
+    --scale 4.0 \
+    --output scored_target_webp.png
+
+# Stream binary image data directly from shell pipes or curl via stdin ('-')
+cat /path/to/target.heic | target-scorer infer \
+    --image - \
+    --target B-2 \
+    --canvas-size 1024 \
+    --checkpoint weights/target_scoring_hrnet_1024_best.pt \
+    --output scored_target_piped.png
 ```
 
-#### B. Score an NRA B-3 Target with PII Redaction
-Redacts competitor registration handwriting, relay numbers, and names:
+#### B. Score with Competitor Registration PII Redaction
+Masks competitor registration handwriting, relay numbers, and names on card margins:
 ```bash
 target-scorer infer \
-    --image /path/to/target_photo.jpg \
+    --image /path/to/target.heic \
     --target B-3 \
     --checkpoint weights/target_scoring_hrnet_1024_best.pt \
     --canvas-size 1024 \
@@ -262,7 +291,30 @@ target-scorer infer \
     --output scored_target_b3_redacted.png
 ```
 
-#### C. Generate and Score a Synthetic 10-Shot Competition Demo Card
+#### C. In-Memory Buffer API (Zero-Disk-I/O Edge & Streaming Inference)
+For edge applications (e.g., Raspberry Pi `Picamera2` video loops or web API endpoints), pass in-memory NumPy arrays or byte streams directly without disk serialization:
+```python
+import cv2
+from target_scorer import run_inference_and_scoring
+
+# Ingest an in-memory BGR or RGB NumPy frame directly from a camera
+# frame_bgr: np.ndarray shape (H, W, 3) uint8
+shots, metrics = run_inference_and_scoring(
+    checkpoint_path="weights/target_scoring_hrnet_1024_best.pt",
+    image_path=frame_bgr,  # Accepts in-memory np.ndarray, bytes, or file path
+    target_type="B-2",
+    canvas_size=1024,
+    pixels_per_mm=4.0,
+    max_shots=10,
+    output_path="realtime_scorecard.png"
+)
+
+print(f"Total Score:     {metrics.total_score} / 100")
+print(f"Extreme Spread:  {metrics.extreme_spread_mm:.2f} mm ({metrics.extreme_spread_moa:.2f} MOA)")
+print(f"Mean Radius:     {metrics.mean_radius_mm:.2f} mm")
+```
+
+#### D. Generate and Score a Synthetic 10-Shot Competition Demo Card
 When no `--image` is provided, a deterministic 10-shot competition target is procedurally rendered:
 ```bash
 # NRA B-2 Slow Fire (50 ft): Scores 96 / 100
@@ -405,16 +457,52 @@ target-scorer train \
 
 ### 4. Standalone Target Rectification (`target-scorer rectify`)
 
-Unwarp perspective distortion and extract an orientation-corrected canonical crop:
+Unwarp perspective distortion and extract an orientation-corrected, metric-calibrated canonical crop across all supported formats (HEIC, RAW/DNG, WebP, PNG, JPEG, or stdin):
 
+#### A. Command-Line Rectification Across Disparate Formats
 ```bash
+# Rectify an Apple iPhone HEIC photo (auto-corrects EXIF orientation and P3 color gamut)
 target-scorer rectify \
-    --image /path/to/skewed_photo.jpg \
+    --image /path/to/skewed_target.heic \
     --target B-2 \
     --canvas-size 1024 \
     --scale 4.0 \
-    --output rectified_target.png \
+    --output rectified_target_b2.png \
     --debug rectification_debug.png
+
+# Rectify a professional Camera RAW / Apple ProRAW DNG file
+target-scorer rectify \
+    --image /path/to/raw_target.dng \
+    --target B-3 \
+    --canvas-size 1024 \
+    --scale 4.0 \
+    --output rectified_target_b3.png
+
+# Rectify via stdin streaming pipe
+cat skewed_target.heic | target-scorer rectify \
+    --image - \
+    --target B-2 \
+    --canvas-size 1024 \
+    --output rectified_target_piped.png
+```
+
+#### B. Python In-Memory Rectification API (Picamera2 / Real-Time Video)
+```python
+import cv2
+from target_scorer import TargetRectifier
+
+rectifier = TargetRectifier(target_type="B-2", canonical_dim=1024, pixels_per_mm=4.0)
+
+# Unwarp an in-memory frame directly from camera memory without writing to disk
+# frame_bgr: np.ndarray shape (H, W, 3) uint8
+result = rectifier.rectify(frame_bgr)
+
+print(f"Canonical Dimensions: {result.canonical_crop.shape}")  # (1024, 1024, 3)
+print(f"Optical Tilt:         {result.tilt_angle_deg:.1f}° off-normal")
+print(f"Motion Blur Variance: {result.blur_metric:.1f}")
+
+# Save or downstream-stream the normalized crop
+cv2.imwrite("canonical_1024.png", result.canonical_crop)
 ```
 
 ---

@@ -284,8 +284,13 @@ class TargetRectifier:
         """
         End-to-end normalization pipeline. Accepts in-memory arrays, file paths, or byte streams.
         """
-        source = image_input if image_input is not None else (image_path if image_path is not None else raw_bgr)
-        if source is None:
+        if image_input is not None:
+            source = image_input
+        elif raw_bgr is not None:
+            source = raw_bgr
+        elif image_path is not None:
+            source = image_path
+        else:
             raise ValueError("TargetRectifier.process_raw_image requires raw_bgr, image_path, or image_input.")
 
         img_bgr = self.load_image_with_exif(source)

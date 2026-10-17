@@ -138,15 +138,34 @@ src/target_scorer/
 
 ### A. Scoring Inference (`target-scorer infer`)
 ```bash
-# Score an arbitrary smartphone image at 1024x1024 with 10 shots
-target-scorer infer --image target.jpg --target B-2 --canvas-size 1024 --shots 10
+# Score an Apple iPhone HEIC photograph (auto-corrected for EXIF rotation & Display P3 gamut)
+target-scorer infer --image target.heic --target B-2 --canvas-size 1024 --shots 10
 
-# Score with competitor registration PII redacted
-target-scorer infer --image target.jpg --target B-3 --canvas-size 1024 --redact-pii
+# Score a professional Camera RAW / Apple ProRAW DNG file
+target-scorer infer --image target.dng --target B-2 --canvas-size 1024
+
+# Score a lossless WebP / PNG photo with competitor registration PII redacted
+target-scorer infer --image target.webp --target B-3 --canvas-size 1024 --redact-pii
+
+# Stream binary image data directly from shell pipes or curl via stdin ('-')
+cat target.heic | target-scorer infer --image - --target B-2 --canvas-size 1024
 
 # Generate deterministic 10-shot competition scorecards
 target-scorer infer --target B-2 --canvas-size 1024 --output colab_scorecard_1024_b2.png
 target-scorer infer --target B-3 --canvas-size 1024 --output colab_scorecard_1024_b3.png
+```
+
+```python
+# Real-Time In-Memory Buffer Inference (Raspberry Pi Picamera2 / Video Capture Loop)
+from target_scorer import run_inference_and_scoring
+
+shots, metrics = run_inference_and_scoring(
+    checkpoint_path="weights/target_scoring_hrnet_1024_best.pt",
+    image_path=frame_bgr,  # In-memory np.ndarray, bytes, or file path
+    target_type="B-2",
+    canvas_size=1024,
+    max_shots=10
+)
 ```
 
 ### B. Cloud GPU Training via Colab CLI (`target-scorer colab-train`)
@@ -200,7 +219,28 @@ target-scorer train \
 target-scorer train --canvas-size 512 --epochs 15 --batch-size 4
 ```
 
-### D. Python Environment Setup via `uv` (PyTorch & Platform Compatibility)
+### D. Standalone Geometric Rectification (`target-scorer rectify`)
+```bash
+# Rectify an Apple iPhone HEIC photo (auto-corrects EXIF orientation and Display P3 gamut)
+target-scorer rectify --image target.heic --target B-2 --canvas-size 1024 --scale 4.0 --output rectified.png --debug debug.png
+
+# Rectify a professional Camera RAW / Apple ProRAW DNG file
+target-scorer rectify --image target.dng --target B-3 --canvas-size 1024 --scale 4.0 --output rectified.png
+
+# Stream binary image data directly from shell pipes or curl via stdin ('-')
+cat target.heic | target-scorer rectify --image - --target B-2 --canvas-size 1024 --output rectified.png
+```
+
+```python
+# Real-Time In-Memory Buffer Rectification (Raspberry Pi Picamera2 / Video Capture Loop)
+from target_scorer import TargetRectifier
+
+rectifier = TargetRectifier(target_type="B-2", canonical_dim=1024, pixels_per_mm=4.0)
+result = rectifier.rectify(frame_bgr)  # Accepts np.ndarray directly
+canonical_crop = result.canonical_crop
+```
+
+### E. Python Environment Setup via `uv` (PyTorch & Platform Compatibility)
 
 #### Why `uv` is Required
 1. **PyTorch Wheel Compatibility Lag:** Official PyTorch pre-compiled binaries and CUDA distributions (e.g., `cu121`, `cu124`) lag behind modern bleeding-edge Python releases (Python 3.13, 3.14+). Attempting to install PyTorch on bleeding-edge Python yields:

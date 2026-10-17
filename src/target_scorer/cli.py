@@ -25,7 +25,7 @@ def rectify_cli():
 
     rectifier = TargetRectifier(target_type=args.target, canonical_dim=args.canvas_size, pixels_per_mm=args.scale)
     img_bgr = rectifier.load_image_with_exif(args.image)
-    result = rectifier.process_raw_image(img_bgr, image_path=args.image)
+    result = rectifier.process_raw_image(img_bgr)
 
     out_dir = os.path.dirname(os.path.abspath(args.output))
     if out_dir:
