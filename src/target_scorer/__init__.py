@@ -9,7 +9,6 @@ from target_scorer.config import (
     TrainConfig,
 )
 from target_scorer.geometry.rectifier import RectificationResult, TargetRectifier
-from target_scorer.infer import generate_synthetic_demo_target, run_inference_and_scoring
 from target_scorer.metrology.peaks import extract_subpixel_peaks
 from target_scorer.metrology.scoring import (
     GroupMetrics,
@@ -31,12 +30,27 @@ from target_scorer.synthetic.generator import (
     stamp_double_shot,
     stamp_keyhole_shot,
 )
-from target_scorer.train import (
-    calculate_localization_metrics,
-    run_training,
-    train_one_epoch,
-    validate_one_epoch,
-)
+
+# Lazy exports for CLI/entrypoint modules (prevents runpy duplicate import RuntimeWarning)
+_LAZY_EXPORTS = {
+    "generate_synthetic_demo_target": ("target_scorer.infer", "generate_synthetic_demo_target"),
+    "run_inference_and_scoring": ("target_scorer.infer", "run_inference_and_scoring"),
+    "run_training": ("target_scorer.train", "run_training"),
+    "train_one_epoch": ("target_scorer.train", "train_one_epoch"),
+    "validate_one_epoch": ("target_scorer.train", "validate_one_epoch"),
+    "calculate_localization_metrics": ("target_scorer.train", "calculate_localization_metrics"),
+}
+
+
+def __getattr__(name: str):
+    if name in _LAZY_EXPORTS:
+        import importlib
+        mod_name, attr_name = _LAZY_EXPORTS[name]
+        mod = importlib.import_module(mod_name)
+        val = getattr(mod, attr_name)
+        globals()[name] = val
+        return val
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 __version__ = "0.1.0"
 

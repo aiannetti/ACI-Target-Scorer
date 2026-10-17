@@ -209,7 +209,9 @@ def run_inference_and_scoring(
     # canonical geometric center (c_mid, c_mid), it has latched onto a nearby bullet hole;
     # in that case, rely on the exact geometric center.
     max_center_dev_px = 5.0 * (eff_pixels_per_mm / 4.0)
-    if bull_peaks and math.hypot(bull_peaks[0][0] - c_mid, bull_peaks[0][1] - c_mid) <= max_center_dev_px:
+    if image_path is None:
+        bullseye_center = (c_mid, c_mid)
+    elif bull_peaks and math.hypot(bull_peaks[0][0] - c_mid, bull_peaks[0][1] - c_mid) <= max_center_dev_px:
         bullseye_center = (bull_peaks[0][0], bull_peaks[0][1])
     else:
         bullseye_center = (c_mid, c_mid)
