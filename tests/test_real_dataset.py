@@ -97,6 +97,42 @@ class TestTargetSchema(unittest.TestCase):
         self.assertEqual(ann.total_score, 0)
         self.assertEqual(ann.x_count, 0)
 
+    def test_target_annotation_from_dict_legacy_xy_keys(self):
+        d = {
+            "target_id": "legacy_01",
+            "image_filename": "legacy.png",
+            "target_type": "B-2",
+            "bullseye_center": [512.0, 512.0],
+            "shots": [
+                {"x": 510.5, "y": 511.2, "score": 10, "is_x": True},
+                {"x": 490.0, "y": 520.0, "score": 9},
+            ],
+            "canvas_size": 1024,
+            "pixels_per_mm": 4.0,
+        }
+        ann = TargetAnnotation.from_dict(d)
+        self.assertEqual(len(ann.shots), 2)
+        self.assertEqual(ann.shots[0].center_x, 510.5)
+        self.assertEqual(ann.shots[0].center_y, 511.2)
+        self.assertEqual(ann.shots[0].score, 10)
+        self.assertTrue(ann.shots[0].is_x)
+        self.assertEqual(ann.shots[1].center_x, 490.0)
+
+    def test_target_annotation_from_json_raw_string(self):
+        raw_json = json.dumps({
+            "target_id": "raw_str_01",
+            "image_filename": "test.png",
+            "target_type": "B-2",
+            "bullseye_center": [512.0, 512.0],
+            "shots": [{"center_x": 512.0, "center_y": 512.0, "score": 10}],
+            "canvas_size": 1024,
+            "pixels_per_mm": 4.0,
+        })
+        ann = TargetAnnotation.from_json(raw_json)
+        self.assertEqual(ann.target_id, "raw_str_01")
+        self.assertEqual(len(ann.shots), 1)
+        self.assertEqual(ann.shots[0].center_x, 512.0)
+
 
 class TestRealTargetDataset(unittest.TestCase):
     """Tests for RealTargetDataset with calibration targets."""
@@ -175,6 +211,30 @@ class TestRealTargetDataset(unittest.TestCase):
         self.assertEqual(first_batch["bullseye_coord"].shape, (2, 2))
         self.assertEqual(len(first_batch["shot_coords"]), 2)
 
+    def test_train_augmentation_coordinate_transform(self):
+        """Verifies that affine transformations in training mode (is_train=True) do not corrupt coordinates."""
+        if not self.calib_dir.exists():
+            self.skipTest(f"Calibration directory '{self.calib_dir}' not found.")
+
+        dataset = RealTargetDataset(
+            data_dir=self.calib_dir,
+            config=self.config,
+            is_train=True,
+            virtual_size=10,
+        )
+        for i in range(10):
+            sample = dataset[i]
+            bull = sample["bullseye_coord"].numpy()
+            # Canvas size is 256. Bullseye should be near center within reasonable margin
+            self.assertTrue(50.0 <= bull[0] <= 206.0, f"Bullseye X out of bounds: {bull[0]}")
+            self.assertTrue(50.0 <= bull[1] <= 206.0, f"Bullseye Y out of bounds: {bull[1]}")
+
+            # Heatmap channel 1 peak should align with bullseye coordinate
+            hmap_bull = sample["heatmap"][1].numpy()
+            y_peak, x_peak = np.unravel_index(np.argmax(hmap_bull), hmap_bull.shape)
+            dist_to_hmap = np.hypot(x_peak - bull[0], y_peak - bull[1])
+            self.assertLess(dist_to_hmap, 3.0, f"Heatmap peak ({x_peak}, {y_peak}) diverged from bullseye ({bull[0]}, {bull[1]})")
+
 
 class TestHybridTargetDataset(unittest.TestCase):
     """Tests for HybridTargetDataset blending synthetic and real datasets."""
@@ -249,6 +309,25 @@ class TestHybridTargetDataset(unittest.TestCase):
         self.assertIsNone(dataset.real_dataset)
         sample = dataset[0]
         self.assertEqual(sample["image"].shape, (3, 256, 256))
+
+    def test_hybrid_validation_determinism(self):
+        """Verifies that is_train=False samples deterministically across multiple evaluations."""
+        if not self.calib_dir.exists():
+            self.skipTest(f"Calibration directory '{self.calib_dir}' not found.")
+
+        dataset = HybridTargetDataset(
+            real_data_dir=self.calib_dir,
+            config=self.config,
+            size=10,
+            real_ratio=0.5,
+            is_train=False,
+        )
+        # Verify that accessing indices repeatedly returns identical target types and bullseye coords
+        for idx in range(10):
+            sample_1 = dataset[idx]
+            sample_2 = dataset[idx]
+            self.assertEqual(sample_1["target_type"], sample_2["target_type"])
+            self.assertTrue(torch.allclose(sample_1["bullseye_coord"], sample_2["bullseye_coord"]))
 
 
 class TestAutoLabeling(unittest.TestCase):

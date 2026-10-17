@@ -154,8 +154,9 @@ class RealTargetDataset(Dataset):
             )
 
             # Transform coordinates
-            bull_x = float(M[0, 0] * bull_x + M[0, 1] * bull_y + M[0, 2])
-            bull_y = float(M[1, 0] * bull_x + M[1, 1] * bull_y + M[1, 2])
+            new_bull_x = float(M[0, 0] * bull_x + M[0, 1] * bull_y + M[0, 2])
+            new_bull_y = float(M[1, 0] * bull_x + M[1, 1] * bull_y + M[1, 2])
+            bull_x, bull_y = new_bull_x, new_bull_y
 
             transformed_shots = []
             margin = max(4.0, 1.5 * self.config.pixels_per_mm)

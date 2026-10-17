@@ -177,11 +177,13 @@ def run_colab_training(
                 os.remove(real_data_zip)
             print(f"[*] Packaging real target dataset from '{real_data_dir}'...")
             shutil.make_archive(os.path.splitext(real_data_zip)[0], "zip", real_data_dir)
-            print(f"[*] Uploading real dataset archive ({os.path.getsize(real_data_zip) / (1024**2):.1f} MB) to Colab VM...")
-            cmd_upload_data = [colab_bin, "upload", real_data_zip, "/content/real_data.zip", "-s", session_name]
-            subprocess.run(cmd_upload_data, check=True)
-            if os.path.exists(real_data_zip):
-                os.remove(real_data_zip)
+            try:
+                print(f"[*] Uploading real dataset archive ({os.path.getsize(real_data_zip) / (1024**2):.1f} MB) to Colab VM...")
+                cmd_upload_data = [colab_bin, "upload", real_data_zip, "/content/real_data.zip", "-s", session_name]
+                subprocess.run(cmd_upload_data, check=True)
+            finally:
+                if os.path.exists(real_data_zip):
+                    os.remove(real_data_zip)
 
         # 4. Unpack and install on remote VM
         print("[4/7] Initializing remote environment on Colab VM...")
@@ -379,9 +381,11 @@ def run_colab_autolabel(
         # 3. Upload codebase, model weights, and inputs
         print("[3/5] Uploading codebase archive and input images...")
         subprocess.run([colab_bin, "upload", bundle_zip, "/content/target_scorer_colab_bundle.zip", "-s", session_name], check=True)
-        subprocess.run([colab_bin, "upload", input_zip, "/content/autolabel_inputs.zip", "-s", session_name], check=True)
-        if os.path.exists(input_zip):
-            os.remove(input_zip)
+        try:
+            subprocess.run([colab_bin, "upload", input_zip, "/content/autolabel_inputs.zip", "-s", session_name], check=True)
+        finally:
+            if os.path.exists(input_zip):
+                os.remove(input_zip)
 
         if checkpoint and os.path.exists(checkpoint):
             print(f"[*] Uploading model checkpoint '{checkpoint}'...")
@@ -412,6 +416,8 @@ def run_colab_autolabel(
             "proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)\n"
             "for line in proc.stdout: print(line, end='', flush=True)\n"
             "proc.wait()\n"
+            "if proc.returncode != 0:\n"
+            "    sys.exit(proc.returncode)\n"
             "shutil.make_archive('/content/autolabeled_results', 'zip', '/content/autolabeled_output')\n"
         )
         proc_exec = subprocess.Popen(

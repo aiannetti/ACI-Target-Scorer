@@ -88,17 +88,8 @@ class TargetAnnotation:
     def from_dict(cls, data: Dict[str, Any]) -> "TargetAnnotation":
         """Deserializes TargetAnnotation from dictionary."""
         shots = [
-            AnnotatedShot(
-                id=s.get("id", i + 1),
-                center_x=float(s["center_x"]),
-                center_y=float(s["center_y"]),
-                score=int(s.get("score", 0)),
-                is_x=bool(s.get("is_x", False)),
-                caliber_mm=float(s.get("caliber_mm", 5.69)),
-                shot_type=str(s.get("shot_type", "single")),
-                confidence=float(s.get("confidence", 1.0)),
-            )
-            for i, s in enumerate(data.get("shots", []))
+            AnnotatedShot.from_dict(s) if isinstance(s, dict) else s
+            for s in data.get("shots", [])
         ]
 
         center = data.get("bullseye_center", [data.get("canvas_size", 1024) / 2.0] * 2)
@@ -118,12 +109,16 @@ class TargetAnnotation:
     @classmethod
     def from_json(cls, source: Union[str, Path]) -> "TargetAnnotation":
         """Loads TargetAnnotation from a JSON file path or raw JSON string."""
-        path = Path(source)
-        if path.exists() and path.is_file():
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+        source_str = str(source).strip()
+        if source_str.startswith("{"):
+            data = json.loads(source_str)
         else:
-            data = json.loads(str(source))
+            path = Path(source)
+            if path.exists() and path.is_file():
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            else:
+                data = json.loads(source_str)
         return cls.from_dict(data)
 
     def get_coords_array(self) -> np.ndarray:

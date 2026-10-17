@@ -69,8 +69,15 @@ class HybridTargetDataset(Dataset):
         return self.size
 
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
-        if self.real_dataset is not None and (self.real_ratio >= 1.0 or random.random() < self.real_ratio):
-            return self.real_dataset[idx]
+        if self.real_dataset is not None:
+            if self.real_ratio >= 1.0:
+                return self.real_dataset[idx]
+            if not self.is_train:
+                # Deterministic selection for consistent validation metrics across epochs
+                if ((idx * 2654435761) % 1000) / 1000.0 < self.real_ratio:
+                    return self.real_dataset[idx]
+            elif random.random() < self.real_ratio:
+                return self.real_dataset[idx]
         return self.synthetic_dataset[idx]
 
 
