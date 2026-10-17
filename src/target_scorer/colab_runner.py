@@ -60,7 +60,7 @@ def run_colab_training(
         checkpoint_dest = os.path.join(project_root, "weights", f"target_scoring_hrnet_{canvas_size}_best.pt")
 
     if scorecard_dest is None:
-        scorecard_dest = os.path.join(project_root, "visual_inspection_reports", f"colab_scorecard_{canvas_size}.png")
+        scorecard_dest = os.path.join(project_root, "visual_inspection_reports", f"colab_scorecard_{canvas_size}_b2.png")
 
     os.makedirs(os.path.dirname(os.path.abspath(checkpoint_dest)), exist_ok=True)
     os.makedirs(os.path.dirname(os.path.abspath(scorecard_dest)), exist_ok=True)
@@ -154,7 +154,8 @@ def run_colab_training(
             f"    '--canvas-size', '{canvas_size}',\n"
             f"    '--scale', '{pixels_per_mm}',\n"
             f"    '--threshold', '0.35',\n"
-            f"    '--output', '/content/target_scorer/colab_inspection_{canvas_size}.png',\n"
+            f"    '--target', 'B-2',\n"
+            f"    '--output', '/content/target_scorer/colab_inspection_{canvas_size}_b2.png',\n"
             f"]\n"
             "infer_proc = subprocess.Popen(infer_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)\n"
             "for line in infer_proc.stdout:\n"
@@ -184,7 +185,7 @@ def run_colab_training(
         subprocess.run(cmd_dl_ckpt, check=True)
         print(f"[✓] Model checkpoint saved locally ({os.path.getsize(checkpoint_dest) / (1024**2):.2f} MB).")
 
-        remote_png = f"/content/target_scorer/colab_inspection_{canvas_size}.png"
+        remote_png = f"/content/target_scorer/colab_inspection_{canvas_size}_b2.png"
         try:
             cmd_dl_png = [colab_bin, "download", remote_png, scorecard_dest, "-s", session_name]
             subprocess.run(cmd_dl_png, check=True)
