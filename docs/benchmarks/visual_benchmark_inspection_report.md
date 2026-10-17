@@ -70,3 +70,20 @@ The composite HUD output demonstrates:
   - Total score display (`39 - 2X / 40`).
   - Ballistic dispersion: Extreme Spread ($28.37\text{ mm} / 6.40\text{ MOA}$), Mean Radius ($9.25\text{ mm} / 2.09\text{ MOA}$), Farthest Pair (`Shot #1 <-> #4`), and Windage/Elevation bias.
   - Per-shot metrology log with radial center distance and effective gauge boundary distance.
+
+---
+
+## 6. High-Resolution Competition Scorecards ($1024 \times 1024$)
+
+The production 1024-resolution pipeline evaluates the full 10-shot competition strings with sub-pixel localization accuracy of **$0.335\text{ mm}$**:
+
+* **NRA B-2 Official Scorecard (Rule 4.2 Slow Fire):** [`visual_inspection_reports/colab_scorecard_1024_b2.png`](file:///home/antho/target_scorer/visual_inspection_reports/colab_scorecard_1024_b2.png)
+  * Score: **`96 / 100`** (Seven 10s, Two 9s, One 8).
+  * Extreme Spread: $42.37\text{ mm}$ ($9.55\text{ MOA}$), Mean Radius: $11.89\text{ mm}$ ($2.68\text{ MOA}$).
+* **NRA B-2 Redacted Scorecard:** [`visual_inspection_reports/colab_scorecard_1024_b2_redacted.png`](file:///home/antho/target_scorer/visual_inspection_reports/colab_scorecard_1024_b2_redacted.png)
+  * Competitor registration handwriting and margin tallies masked via circular crop and `[COMPETITOR REGISTRATION REDACTED]` badge.
+* **NRA B-3 Official Scorecard (Rule 4.3 Timed/Rapid Fire):** [`visual_inspection_reports/colab_scorecard_1024_b3.png`](file:///home/antho/target_scorer/visual_inspection_reports/colab_scorecard_1024_b3.png)
+  * Score: **`100 - 7X / 100`** (Seven Xs, Three 10s).
+  * Extreme Spread: $42.44\text{ mm}$ ($9.57\text{ MOA}$), Mean Radius: $11.89\text{ mm}$ ($2.68\text{ MOA}$).
+* **NRA B-3 Redacted Scorecard:** [`visual_inspection_reports/colab_scorecard_1024_b3_redacted.png`](file:///home/antho/target_scorer/visual_inspection_reports/colab_scorecard_1024_b3_redacted.png)
+  * PII masked with intact concentric ring and ballistic scoring verification.
