@@ -95,6 +95,42 @@ class TestCanonicalLoader(unittest.TestCase):
         self.assertLess(top_left_bgr[0], 50)     # Low Blue
         self.assertLess(top_left_bgr[1], 50)     # Low Green
 
+    def test_tiff_variants(self):
+        """Verifies ingestion of disparate TIFF variants (.tif, .tiff, LZW, 16-bit, RGBA, multi-page)."""
+        pattern = self._create_test_pattern()
+
+        # 1. Standard .tif and .tiff extensions
+        for ext in [".tif", ".tiff", ".TIF", ".TIFF"]:
+            path = os.path.join(self.temp_dir.name, f"sample{ext}")
+            pattern.save(path, format="TIFF")
+            bgr = self.canonicalizer.load_to_bgr(path)
+            self.assertEqual(bgr.shape, (80, 120, 3))
+            self.assertEqual(bgr.dtype, np.uint8)
+
+        # 2. LZW compressed TIFF
+        lzw_path = os.path.join(self.temp_dir.name, "compressed_lzw.tiff")
+        pattern.save(lzw_path, format="TIFF", compression="tiff_lzw")
+        bgr_lzw = self.canonicalizer.load_to_bgr(lzw_path)
+        self.assertEqual(bgr_lzw.shape, (80, 120, 3))
+        self.assertEqual(bgr_lzw.dtype, np.uint8)
+
+        # 3. 16-bit grayscale TIFF (scanner / scientific camera)
+        img_16bit = Image.fromarray(np.full((50, 50), 32768, dtype=np.uint16))
+        path_16 = os.path.join(self.temp_dir.name, "scanner_16bit.tiff")
+        img_16bit.save(path_16, format="TIFF")
+        bgr_16 = self.canonicalizer.load_to_bgr(path_16)
+        self.assertEqual(bgr_16.shape, (50, 50, 3))
+        self.assertEqual(bgr_16.dtype, np.uint8)
+
+        # 4. Multi-page TIFF (page 0 extracted)
+        page1 = Image.fromarray(np.full((40, 40, 3), 110, dtype=np.uint8))
+        page2 = Image.fromarray(np.full((40, 40, 3), 220, dtype=np.uint8))
+        multipage_path = os.path.join(self.temp_dir.name, "multipage.tiff")
+        page1.save(multipage_path, format="TIFF", save_all=True, append_images=[page2])
+        bgr_multi = self.canonicalizer.load_to_bgr(multipage_path)
+        self.assertEqual(bgr_multi.shape, (40, 40, 3))
+        self.assertEqual(bgr_multi[0, 0, 0], 110)
+
     def test_raw_numpy_buffers(self):
         """Verifies ingestion of raw memory arrays (Picamera2 / edge frame buffers)."""
         # 1. 2D Grayscale buffer
