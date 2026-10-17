@@ -77,10 +77,25 @@ class ImageCanonicalizer:
         except Exception as e:
             logger.debug("EXIF transposition skipped: %s", e)
 
-        # 2. Convert color space and enforce 3-channel RGB
+        # 2. Normalize 16-bit or floating-point depth before RGB conversion
+        # Prevents Pillow's default convert('RGB') from clamping values > 255 to white
+        if img.mode in ("I;16", "I;16B", "I;16L", "I;16N", "I", "F"):
+            arr = np.array(img)
+            if np.issubdtype(arr.dtype, np.floating):
+                if arr.max() <= 1.0:
+                    arr = (arr * 255.0).clip(0, 255).astype(np.uint8)
+                else:
+                    arr = arr.clip(0, 255).astype(np.uint8)
+            elif arr.dtype == np.uint16 or arr.max() > 255:
+                arr = (arr / 256.0).clip(0, 255).astype(np.uint8)
+            else:
+                arr = np.clip(arr, 0, 255).astype(np.uint8)
+            img = Image.fromarray(arr, mode="L")
+
+        # 3. Convert color space and enforce 3-channel RGB
         img = self._normalize_color_profile(img)
 
-        # 3. Convert to contiguous uint8 NumPy array
+        # 4. Convert to contiguous uint8 NumPy array
         rgb_array = np.ascontiguousarray(img, dtype=np.uint8)
         return rgb_array
 
@@ -92,12 +107,14 @@ class ImageCanonicalizer:
         if not isinstance(arr, np.ndarray):
             raise TypeError(f"Expected np.ndarray, got {type(arr)}")
 
-        # Handle floating-point image buffers
+        # Handle floating-point or 16-bit integer image buffers
         if np.issubdtype(arr.dtype, np.floating):
             if arr.max() <= 1.0:
                 arr = (arr * 255.0).clip(0, 255).astype(np.uint8)
             else:
                 arr = arr.clip(0, 255).astype(np.uint8)
+        elif arr.dtype == np.uint16 or arr.max() > 255:
+            arr = (arr / 256.0).clip(0, 255).astype(np.uint8)
         elif arr.dtype != np.uint8:
             arr = np.clip(arr, 0, 255).astype(np.uint8)
 
@@ -152,7 +169,7 @@ class ImageCanonicalizer:
             return self._process_ndarray(source, color_order=color_order)
 
         # Case 2: Standard input stream ('-')
-        if source == "-":
+        if isinstance(source, (str, Path)) and str(source) == "-":
             data = sys.stdin.buffer.read()
             return self.load_to_bgr(data)
 

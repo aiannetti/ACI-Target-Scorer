@@ -121,6 +121,7 @@ class TestCanonicalLoader(unittest.TestCase):
         bgr_16 = self.canonicalizer.load_to_bgr(path_16)
         self.assertEqual(bgr_16.shape, (50, 50, 3))
         self.assertEqual(bgr_16.dtype, np.uint8)
+        self.assertAlmostEqual(int(bgr_16[0, 0, 0]), 128, delta=1)
 
         # 4. Multi-page TIFF (page 0 extracted)
         page1 = Image.fromarray(np.full((40, 40, 3), 110, dtype=np.uint8))
@@ -164,6 +165,12 @@ class TestCanonicalLoader(unittest.TestCase):
         bgr_float = self.canonicalizer.load_to_bgr(float_buf)
         self.assertEqual(bgr_float.dtype, np.uint8)
         self.assertTrue(np.all(bgr_float >= 127) and np.all(bgr_float <= 128))
+
+        # 6. uint16 buffer [0, 65535] (scanner / depth buffer)
+        uint16_buf = np.full((30, 30, 3), 32768, dtype=np.uint16)
+        bgr_uint16 = self.canonicalizer.load_to_bgr(uint16_buf)
+        self.assertEqual(bgr_uint16.dtype, np.uint8)
+        self.assertAlmostEqual(int(bgr_uint16[0, 0, 0]), 128, delta=1)
 
     def test_bytes_and_stream_ingestion(self):
         """Verifies ingestion from raw byte strings and io.BytesIO streams."""

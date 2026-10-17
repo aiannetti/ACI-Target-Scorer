@@ -108,7 +108,9 @@ class SyntheticTargetDataset(Dataset):
                 encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
                 success, enc_buf = cv2.imencode(".jpg", img_bgr, encode_param)
                 if success:
-                    img_bgr = cv2.imdecode(enc_buf, cv2.IMREAD_COLOR)
+                    decoded = cv2.imdecode(enc_buf, cv2.IMREAD_COLOR)
+                    if decoded is not None:
+                        img_bgr = decoded
 
             # Invariance against subtle mobile camera optical defocus / handheld sensor blur
             if random.random() < 0.25:
