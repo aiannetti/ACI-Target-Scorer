@@ -88,6 +88,41 @@ Bullet Radius = 5.69 mm / 2 = 2.845 mm
 
 ---
 
+### Module 3: Format-Agnostic Ingestion & In-Memory Buffers (`tests/test_canonical_loader.py`)
+
+*Objective:* Verify polymorphic image loading across all formats (Apple HEIC/HEIF, Apple ProRAW DNG, 8-bit/16-bit TIFFs, WebP, PNG, JPEG) and direct in-memory NumPy/byte buffer ingestion.
+
+| Test ID | Condition | Inputs / Ground Truth | Verification Criteria | Status |
+| :--- | :--- | :--- | :--- | :---: |
+| **ING-01** | Standard Disk Formats | PNG, JPEG, BMP, TIFF, WebP files | Returns 3-channel uint8 BGR image matching spatial dimensions. | **PASS** |
+| **ING-02** | In-Memory Buffers | Encoded byte buffers (`io.BytesIO`, raw bytes) | Successfully decodes without writing to temporary disk files. | **PASS** |
+| **ING-03** | Raw NumPy Arrays | Direct `np.ndarray` frame from video camera | Auto-detects BGR/RGB channels and normalizes without memory copies. | **PASS** |
+| **ING-04** | EXIF Orientation 1–8 | Images with EXIF orientation tags 1 through 8 | Transposes/rotates pixel arrays to upright orientation. | **PASS** |
+| **ING-05** | Display P3 Gamut CMS | Apple iPhone wide-gamut Display P3 images | Maps color profile to standard sRGB via Pillow CMS. | **PASS** |
+| **ING-06** | TIFF Variants & Bit-Depths | 8-bit, 16-bit, compressed (LZW, Deflate) TIFFs | Correctly normalizes dynamic range and bit depth. | **PASS** |
+| **ING-07** | HEIC / Apple HEIF | HEIC photos (via `pillow-heif`) | Seamlessly decodes and integrates into pipeline. | **PASS** |
+
+---
+
+### Module 4: Real Target Datasets, Schema, & Active Learning (`tests/test_real_dataset.py`)
+
+*Objective:* Verify `TargetAnnotation` JSON schemas, `RealTargetDataset` Gaussian heatmaps and augmentations, `HybridTargetDataset` blending (Options A & B), and `autolabel_target_image` candidate extraction.
+
+| Test ID | Condition | Inputs / Ground Truth | Verification Criteria | Status |
+| :--- | :--- | :--- | :--- | :---: |
+| **DAT-01** | Schema Round-Trip | `AnnotatedShot` dataclass instances | Dict and JSON serialization preserve exact coordinates and score values. | **PASS** |
+| **DAT-02** | TargetAnnotation JSON I/O | Full target card annotation file | Deserializes `TargetAnnotation` and returns continuous `(N, 2)` NumPy array. | **PASS** |
+| **DAT-03** | Calibration Dataset Loading | `datasets/calibration_targets` manifest | Loads matching image and annotation pairs; produces $(3, H, W)$ tensors. | **PASS** |
+| **DAT-04** | Continuous Gaussian Heatmaps | Real target shot coordinates | Renders exact 2-channel 2D sub-pixel Gaussian regression targets ($\sigma = 3.2\text{ px}$). | **PASS** |
+| **DAT-05** | Virtual Epoch Expansion | Small dataset repeated across virtual epoch | Indexing beyond dataset size wraps cleanly with randomized augmentations. | **PASS** |
+| **DAT-06** | PyTorch DataLoader Batching | `RealTargetDataset` + `custom_collate_fn` | Batches images, heatmaps, and variable-length coordinate lists. | **PASS** |
+| **DAT-07** | Option B Pure Real Training | `HybridTargetDataset` with `real_ratio = 1.0` | Yields 100% real target samples for rapid domain adaptation. | **PASS** |
+| **DAT-08** | Option A Hybrid Blending | `HybridTargetDataset` with `real_ratio = 0.5` | Blends real and procedural synthetic targets with stochastic ratio. | **PASS** |
+| **DAT-09** | Synthetic Fallback | Missing or invalid real data directory | Gracefully falls back to 100% synthetic procedural training with warning. | **PASS** |
+| **DAT-10** | Assisted Auto-Labeling | Smartphone target photo (`autolabel`) | Unwarps to canonical space, detects peaks, writes JSON and review card. | **PASS** |
+
+---
+
 ## 4. Execution & Implementation Roadmap
 
 ### Phase 1: Parameterize Resolution in Core Engine [Completed ✓]
@@ -115,3 +150,17 @@ Bullet Radius = 5.69 mm / 2 = 2.845 mm
 - 1-Click cloud GPU orchestration via Google Colab CLI (`target-scorer colab-train`).
 - Warm-start fine-tuning (`--initial-weights`) reaching **$98.9\%$ recall** and **$0.335\text{ mm}$ sub-pixel error** on NVIDIA A100.
 - Symmetrical 10-shot competition evaluation scorecards generated for NRA B-2 (`96 / 100`) and B-3 (`100 - 7X / 100`).
+
+### Phase 7: Format-Agnostic Ingestion & In-Memory Buffer Testing [Completed ✓]
+- Format-independent ingestion layer (`target_scorer/geometry/canonical_loader.py`): Apple HEIC/HEIF, Apple ProRAW DNG, 8/16-bit TIFFs, WebP, PNG, JPEG.
+- Lossless EXIF orientation auto-transposition (tags 1–8) and Display P3 to sRGB Color Management System (CMS).
+- Direct in-memory frame ingestion for Raspberry Pi `Picamera2` and OpenCV video capture streams.
+- 7 comprehensive unit test suites passing in `tests/test_canonical_loader.py`.
+
+### Phase 8: Real Target Dataset Ingestion & Assisted Active Learning [Completed ✓]
+- Standardized `TargetAnnotation` & `AnnotatedShot` schema with continuous sub-pixel coordinate arrays.
+- Sample calibration dataset generation (`datasets/calibration_targets/`) with 6 realistic B-2/B-3 phone photos and annotations.
+- `RealTargetDataset` with continuous 2-channel 2D Gaussian heatmaps and photometric domain augmentations.
+- `HybridTargetDataset` with balanced sampling (Option A hybrid and Option B pure real fine-tuning).
+- `target-scorer autolabel` CLI for automated candidate proposal and human-in-the-loop review cards.
+- 11 unit tests passing in `tests/test_real_dataset.py` (54/54 tests passing total).
