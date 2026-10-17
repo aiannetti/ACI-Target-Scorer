@@ -74,7 +74,7 @@ def autolabel_cli():
     if args.input_dir:
         in_p = Path(args.input_dir)
         for ext in ("*.heic", "*.HEIC", "*.jpg", "*.jpeg", "*.JPG", "*.png", "*.PNG", "*.tiff", "*.tif", "*.dng", "*.DNG", "*.webp"):
-            targets_to_process.extend(in_p.glob(ext))
+            targets_to_process.extend(in_p.rglob(ext))
 
     targets_to_process = sorted(list(set(targets_to_process)))
     print(f"[+] Found {len(targets_to_process)} target(s) to auto-label.")

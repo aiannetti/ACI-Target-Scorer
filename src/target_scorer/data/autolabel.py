@@ -114,12 +114,19 @@ def autolabel_target_image(
         max_peaks=max_shots
     )
 
-    # Extract bullseye center
-    bull_peaks = extract_subpixel_peaks(bull_hmap, threshold=0.20, min_distance_px=20.0, max_peaks=1)
+    # Extract bullseye center (TargetRectifier centers the bullseye at canvas_size / 2)
+    c_mid = canvas_size / 2.0
+    search_radius = max(20.0, 8.0 * pixels_per_mm)
+    yy, xx = np.ogrid[:canvas_size, :canvas_size]
+    central_mask = ((xx - c_mid) ** 2 + (yy - c_mid) ** 2) <= (search_radius ** 2)
+    bull_hmap_central = bull_hmap.copy()
+    bull_hmap_central[~central_mask] = 0.0
+
+    bull_peaks = extract_subpixel_peaks(bull_hmap_central, threshold=0.15, min_distance_px=10.0, max_peaks=1)
     if bull_peaks:
         bull_center = (float(bull_peaks[0][0]), float(bull_peaks[0][1]))
     else:
-        bull_center = (canvas_size / 2.0, canvas_size / 2.0)
+        bull_center = (c_mid, c_mid)
 
     # Optional Competitor Registration PII Redaction
     rings_cfg = TargetRingsConfig(target_type=target_type)
