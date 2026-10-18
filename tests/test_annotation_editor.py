@@ -121,6 +121,90 @@ class TestAnnotationEditor(unittest.TestCase):
         finally:
             app.destroy()
 
+    def test_combobox_theme_styling(self):
+        """Verifies Caliber combobox has high-contrast styling matching Open Directory button."""
+        app = AnnotationEditor(target_dir_or_file=self.tmp_dir)
+        try:
+            # Check TCombobox configuration
+            field_bg = app.style.lookup("TCombobox", "fieldbackground")
+            bg = app.style.lookup("TCombobox", "background")
+            fg = app.style.lookup("TCombobox", "foreground")
+            self.assertEqual(field_bg, "#323440")
+            self.assertEqual(bg, "#323440")
+            self.assertEqual(fg, "#f0f2f5")
+        finally:
+            app.destroy()
+
+    def test_delete_all_shots_with_confirmation(self):
+        """Verifies Delete All Shots prompts user, clears shots, and is reversible via Undo."""
+        from unittest.mock import patch
+
+        app = AnnotationEditor(target_dir_or_file=self.tmp_dir)
+        try:
+            self.assertEqual(len(app.shots), 2)
+
+            # 1. User cancels confirmation dialog -> shots remain untouched
+            with patch("tkinter.messagebox.askyesno", return_value=False):
+                app.on_clear_shots()
+            self.assertEqual(len(app.shots), 2)
+
+            # 2. User confirms deletion -> all shots removed
+            with patch("tkinter.messagebox.askyesno", return_value=True):
+                app.on_clear_shots()
+            self.assertEqual(len(app.shots), 0)
+            self.assertEqual(app.group_metrics.total_score, 0)
+            self.assertIsNone(app.selected_shot_idx)
+
+            # 3. User hits Undo -> restored
+            app.on_undo()
+            self.assertEqual(len(app.shots), 2)
+            self.assertEqual(app.group_metrics.total_score, 20)
+        finally:
+            app.destroy()
+
+    def test_eagle_eye_loupe_inspection_and_nudge(self):
+        """Verifies Eagle Eye scoring gauge popup initialization, ring margins, and live nudging."""
+        from target_scorer.gui.annotation_editor import EagleEyeLoupe
+
+        app = AnnotationEditor(target_dir_or_file=self.tmp_dir)
+        try:
+            # Select shot #1 (at 512, 512 - dead center of bullseye)
+            app.selected_shot_idx = 0
+            app.on_open_eagle_eye()
+
+            loupe = app.eagle_eye_dialog
+            self.assertIsNotNone(loupe)
+            self.assertTrue(loupe.winfo_exists())
+            self.assertEqual(loupe.shot_idx, 0)
+            self.assertEqual(loupe.zoom_mag, 8.0)
+
+            # Verify awarded score readout
+            shot0 = loupe.get_current_shot()
+            self.assertIsNotNone(shot0)
+            self.assertEqual(shot0["score"], 10)
+            self.assertTrue(shot0["is_x"])
+            self.assertIn("AWARDED: 10 [X]", loupe.lbl_score.cget("text"))
+
+            # Test nudging inside loupe
+            orig_x, orig_y = shot0["x"], shot0["y"]
+            loupe.nudge(1.5, -1.0)
+            self.assertAlmostEqual(shot0["x"], orig_x + 1.5, places=2)
+            self.assertAlmostEqual(shot0["y"], orig_y - 1.0, places=2)
+
+            # Test zoom magnification
+            loupe.set_zoom(12.0)
+            self.assertEqual(loupe.zoom_mag, 12.0)
+
+            # Test cycle to next shot
+            loupe.next_shot()
+            self.assertEqual(loupe.shot_idx, 1)
+
+            # Close loupe
+            loupe.destroy()
+            self.assertFalse(loupe.winfo_exists())
+        finally:
+            app.destroy()
+
 
 if __name__ == "__main__":
     unittest.main()

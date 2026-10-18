@@ -90,37 +90,71 @@ def generate_ragged_contour(center: Tuple[float, float], base_radius_px: float,
     num_vertices = 48
     angles = np.linspace(0, 2.0 * np.pi, num_vertices, endpoint=False)
     phase1, phase2, phase3 = random.uniform(0, 2*np.pi), random.uniform(0, 2*np.pi), random.uniform(0, 2*np.pi)
-    flute_bias = 0.18 if config.flute_direction == "vertical" else -0.18
+    flute_bias = 0.08 if config.flute_direction == "vertical" else -0.08
 
     radii = []
     for theta in angles:
         perturbation = (
-            0.12 * np.sin(3.0 * theta + phase1) +
-            0.08 * np.sin(7.0 * theta + phase2) +
-            0.05 * np.cos(11.0 * theta + phase3) +
+            0.06 * np.sin(3.0 * theta + phase1) +
+            0.04 * np.sin(7.0 * theta + phase2) +
+            0.03 * np.cos(11.0 * theta + phase3) +
             flute_bias * np.cos(2.0 * theta)
         )
-        r = base_radius_px * (1.0 + perturbation + random.uniform(-0.06, 0.06)) * anisotropy
+        scale_val = float(np.clip(1.0 + perturbation + random.uniform(-0.04, 0.04), 0.75, 1.12))
+        r = base_radius_px * scale_val * anisotropy
         radii.append(r)
 
     points = [[cx + r * np.cos(t), cy + r * np.sin(t)] for r, t in zip(radii, angles)]
     return np.array(points, dtype=np.int32)
 
 
+def sample_bullet_void_bgr(config: Optional[TargetConfig] = None) -> Tuple[int, int, int]:
+    """
+    Samples realistic bullet hole penetration void background color:
+      - 45% bright white/cream (flatbed document scanner lid backing, white card backer)
+      - 35% dark range void / rubber bullet trap shadow
+      - 20% tan/kraft corrugated cardboard backing
+    """
+    mode = getattr(config, "void_color_mode", "mixed") if config else "mixed"
+    if mode == "scanner_white":
+        val = random.randint(225, 252)
+        return (val - random.randint(0, 6), val, val - random.randint(0, 4))
+    elif mode == "dark_void":
+        return (random.randint(12, 28), random.randint(10, 26), random.randint(10, 26))
+    elif mode == "tan_backer":
+        return (random.randint(140, 175), random.randint(160, 195), random.randint(180, 215))
+
+    p = random.random()
+    if p < 0.45:
+        # Scanner backing / white card
+        val = random.randint(225, 252)
+        return (val - random.randint(0, 6), val, val - random.randint(0, 4))
+    elif p < 0.80:
+        # Dark void
+        return (random.randint(12, 28), random.randint(10, 26), random.randint(10, 26))
+    else:
+        # Tan/kraft cardboard backer
+        return (random.randint(140, 175), random.randint(160, 195), random.randint(180, 215))
+
+
 def stamp_bullet_hole(canvas: np.ndarray, center: Tuple[float, float], 
                       config: TargetConfig, raggedness: float = 1.0) -> ShotAnnotation:
-    """Stamps realistic single bullet penetration hole with lead wipe grease ring."""
+    """Stamps realistic single bullet penetration hole with lead wipe grease ring and multi-tone void."""
     cx, cy = center
     r_bullet_px = (config.bullet_diameter_mm / 2.0) * config.pixels_per_mm
     grease_width_px = config.grease_ring_width_mm * config.pixels_per_mm
 
+    # 1. Outer lead wipe grease ring (NRA Rule 14.3)
     grease_radius_outer = int(round(r_bullet_px + grease_width_px * 0.5))
     cv2.circle(canvas, (int(round(cx)), int(round(cy))), grease_radius_outer, (25, 25, 28), -1, lineType=cv2.LINE_AA)
 
-    effective_void_radius = r_bullet_px * (0.85 * raggedness)
+    # 2. Perforated void with simulated illumination (scanner white, dark range, or tan backer)
+    effective_void_radius = r_bullet_px * (0.80 * raggedness)
     hole_poly = generate_ragged_contour((cx, cy), effective_void_radius, config)
-    cv2.fillPoly(canvas, [hole_poly], (12, 10, 10), lineType=cv2.LINE_AA)
+    void_bgr = sample_bullet_void_bgr(config)
+    cv2.fillPoly(canvas, [hole_poly], void_bgr, lineType=cv2.LINE_AA)
 
+    # 3. Torn paper fibers around penetration boundary
     num_flaps = random.randint(2, 4)
     for _ in range(num_flaps):
         flap_angle = random.uniform(0, 2.0 * np.pi)
@@ -137,11 +171,15 @@ def stamp_bullet_hole(canvas: np.ndarray, center: Tuple[float, float],
         p2 = (int(bx - (flap_width / 2.0) * np.cos(tangent_angle)), int(by - (flap_width / 2.0) * np.sin(tangent_angle)))
         p_tip = (int(tip_x), int(tip_y))
 
-        fiber_tone = (
-            min(255, int(config.cardboard_base_bgr[0] + random.randint(10, 30))),
-            min(255, int(config.cardboard_base_bgr[1] + random.randint(10, 30))),
-            min(255, int(config.cardboard_base_bgr[2] + random.randint(10, 30)))
-        )
+        if void_bgr[0] > 200:
+            # White scanner void: flaps can be dark target paper or paper fiber tones
+            fiber_tone = (random.randint(40, 75), random.randint(40, 75), random.randint(45, 80)) if random.random() < 0.5 else (205, 205, 212)
+        else:
+            fiber_tone = (
+                min(255, int(config.cardboard_base_bgr[0] + random.randint(10, 30))),
+                min(255, int(config.cardboard_base_bgr[1] + random.randint(10, 30))),
+                min(255, int(config.cardboard_base_bgr[2] + random.randint(10, 30)))
+            )
         cv2.fillPoly(canvas, [np.array([p1, p2, p_tip], dtype=np.int32)], fiber_tone, lineType=cv2.LINE_AA)
 
     return ShotAnnotation(center_x=cx, center_y=cy, shot_type="single", caliber_radius_px=r_bullet_px)
@@ -167,7 +205,7 @@ def stamp_double_shot(canvas: np.ndarray, primary_center: Tuple[float, float],
 
 def stamp_keyhole_shot(canvas: np.ndarray, center: Tuple[float, float],
                        config: TargetConfig) -> ShotAnnotation:
-    """Stamps elongated tumbling keyhole shot."""
+    """Stamps elongated tumbling keyhole shot with lead wipe and void backing."""
     cx, cy = center
     r_bullet_px = (config.bullet_diameter_mm / 2.0) * config.pixels_per_mm
     yaw_deg = random.uniform(0.0, 360.0)
@@ -180,7 +218,8 @@ def stamp_keyhole_shot(canvas: np.ndarray, center: Tuple[float, float],
     cv2.ellipse(canvas, center_int, axes, yaw_deg, 0, 360, (25, 25, 28), -1, lineType=cv2.LINE_AA)
 
     void_axes = (int(round(major_len_px * 0.85)), int(round(minor_len_px * 0.80)))
-    cv2.ellipse(canvas, center_int, void_axes, yaw_deg, 0, 360, (12, 10, 10), -1, lineType=cv2.LINE_AA)
+    void_bgr = sample_bullet_void_bgr(config)
+    cv2.ellipse(canvas, center_int, void_axes, yaw_deg, 0, 360, void_bgr, -1, lineType=cv2.LINE_AA)
 
     return ShotAnnotation(
         center_x=cx, center_y=cy, shot_type="keyhole",

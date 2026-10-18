@@ -25,6 +25,330 @@ from target_scorer.data.schema import AnnotatedShot, TargetAnnotation
 from target_scorer.metrology.scoring import GroupMetrics, ShotResult, score_target_group
 
 
+class EagleEyeLoupe(tk.Toplevel):
+    """
+    Dedicated high-magnification Eagle Eye scoring gauge inspection dialog.
+    Simulates physical NRA 4x-12x optical scoring loupes with an engraved caliber reticle
+    and exact scoring ring arcs to inspect tangent touches and inward scoring advantage (NRA Rule 14.3).
+    """
+
+    def __init__(self, parent: "AnnotationEditor", shot_idx: int):
+        super().__init__(parent)
+        self.parent_editor = parent
+        self.shot_idx = shot_idx
+        self.zoom_mag: float = 8.0
+        self.nudge_step: float = 0.5
+        self.canvas_dim: int = 380
+        self.loupe_photo: Optional[ImageTk.PhotoImage] = None
+
+        self.title(f"Eagle Eye Scoring Gauge - Shot #{self.get_current_shot_id()}")
+        self.geometry("450x660")
+        self.minsize(420, 640)
+        self.configure(bg="#18191c")
+        self.transient(parent)
+
+        self._build_ui()
+        self._bind_events()
+        self.redraw()
+
+        # Center relative to parent
+        self.update_idletasks()
+        try:
+            px = parent.winfo_x() + (parent.winfo_width() - 450) // 2
+            py = parent.winfo_y() + (parent.winfo_height() - 660) // 2
+            self.geometry(f"+{max(20, px)}+{max(20, py)}")
+        except Exception:
+            pass
+
+    def get_current_shot(self) -> Optional[Dict[str, Any]]:
+        if 0 <= self.shot_idx < len(self.parent_editor.shots):
+            return self.parent_editor.shots[self.shot_idx]
+        return None
+
+    def get_current_shot_id(self) -> int:
+        shot = self.get_current_shot()
+        return shot["id"] if shot else 0
+
+    def set_shot_index(self, idx: int):
+        if not self.parent_editor.shots:
+            self.destroy()
+            return
+        self.shot_idx = max(0, min(len(self.parent_editor.shots) - 1, idx))
+        self.parent_editor.selected_shot_idx = self.shot_idx
+        self.parent_editor._select_tree_row(self.shot_idx)
+        self.parent_editor.redraw_canvas()
+        shot_id = self.get_current_shot_id()
+        self.title(f"Eagle Eye Scoring Gauge - Shot #{shot_id}")
+        self.lbl_shot_title.config(text=f"SHOT #{shot_id} OPTICAL INSPECTION")
+        self.redraw()
+
+    def prev_shot(self):
+        if not self.parent_editor.shots:
+            return
+        new_idx = (self.shot_idx - 1) % len(self.parent_editor.shots)
+        self.set_shot_index(new_idx)
+
+    def next_shot(self):
+        if not self.parent_editor.shots:
+            return
+        new_idx = (self.shot_idx + 1) % len(self.parent_editor.shots)
+        self.set_shot_index(new_idx)
+
+    def set_zoom(self, mag: float):
+        self.zoom_mag = mag
+        self.redraw()
+
+    def set_step(self, step: float):
+        self.nudge_step = step
+
+    def nudge(self, dx_px: float, dy_px: float):
+        shot = self.get_current_shot()
+        if not shot:
+            return
+        self.parent_editor.push_undo()
+        shot["x"] = max(0.0, min(float(self.parent_editor.canvas_size), shot["x"] + dx_px))
+        shot["y"] = max(0.0, min(float(self.parent_editor.canvas_size), shot["y"] + dy_px))
+        self.parent_editor.recalculate_scores()
+        self.parent_editor.redraw_canvas()
+        self.redraw()
+
+    def _build_ui(self):
+        # 1. Top Header
+        top_frame = ttk.Frame(self, padding=(12, 8))
+        top_frame.pack(side=tk.TOP, fill=tk.X)
+
+        shot_id = self.get_current_shot_id()
+        self.lbl_shot_title = ttk.Label(top_frame, text=f"SHOT #{shot_id} OPTICAL INSPECTION", style="Header.TLabel")
+        self.lbl_shot_title.pack(side=tk.LEFT)
+
+        btn_close = ttk.Button(top_frame, text="✕", width=3, command=self.destroy)
+        btn_close.pack(side=tk.RIGHT)
+
+        # 2. Reticle Canvas Frame
+        canvas_card = ttk.Frame(self, style="Card.TFrame", padding=6)
+        canvas_card.pack(side=tk.TOP, padx=12, pady=(0, 6))
+
+        self.canvas = tk.Canvas(
+            canvas_card,
+            width=self.canvas_dim,
+            height=self.canvas_dim,
+            bg="#0f1013",
+            highlightthickness=1,
+            highlightbackground="#323440",
+            cursor="crosshair"
+        )
+        self.canvas.pack()
+        self.canvas.bind("<Button-1>", self.on_canvas_click)
+
+        # 3. Metrology Card
+        metrology_card = ttk.Frame(self, style="Card.TFrame", padding=(12, 8))
+        metrology_card.pack(side=tk.TOP, fill=tk.X, padx=12, pady=(0, 6))
+
+        self.lbl_score = ttk.Label(metrology_card, text="SCORE: --", font=("Segoe UI", 13, "bold"), foreground="#00ff78")
+        self.lbl_score.pack(anchor=tk.W)
+
+        self.lbl_ruling = ttk.Label(metrology_card, text="--", font=("Segoe UI", 9, "bold"), foreground="#00d7ff")
+        self.lbl_ruling.pack(anchor=tk.W, pady=(2, 2))
+
+        self.lbl_details = ttk.Label(metrology_card, text="--", font=("Segoe UI", 8), foreground="#a0a4b0")
+        self.lbl_details.pack(anchor=tk.W)
+
+        # 4. Controls Frame
+        ctrl_frame = ttk.Frame(self, padding=(12, 4))
+        ctrl_frame.pack(side=tk.TOP, fill=tk.X)
+
+        # Magnification row
+        zoom_row = ttk.Frame(ctrl_frame)
+        zoom_row.pack(side=tk.TOP, fill=tk.X, pady=(0, 6))
+        ttk.Label(zoom_row, text="Loupe Zoom:").pack(side=tk.LEFT, padx=(0, 6))
+        for z in [6.0, 8.0, 12.0]:
+            btn_z = ttk.Button(zoom_row, text=f"{int(z)}x", width=4, command=lambda val=z: self.set_zoom(val))
+            btn_z.pack(side=tk.LEFT, padx=2)
+
+        # Step size row
+        step_row = ttk.Frame(ctrl_frame)
+        step_row.pack(side=tk.TOP, fill=tk.X, pady=(0, 6))
+        ttk.Label(step_row, text="Nudge Step:").pack(side=tk.LEFT, padx=(0, 6))
+        for st in [0.2, 0.5, 1.0]:
+            btn_s = ttk.Button(step_row, text=f"{st}px", width=5, command=lambda val=st: self.set_step(val))
+            btn_s.pack(side=tk.LEFT, padx=2)
+
+        # Nudge Pad
+        pad_frame = ttk.Frame(ctrl_frame)
+        pad_frame.pack(side=tk.TOP, pady=(0, 6))
+
+        btn_up = ttk.Button(pad_frame, text="▲", width=4, command=lambda: self.nudge(0, -self.nudge_step))
+        btn_up.grid(row=0, column=1, padx=2, pady=2)
+        btn_left = ttk.Button(pad_frame, text="◀", width=4, command=lambda: self.nudge(-self.nudge_step, 0))
+        btn_left.grid(row=1, column=0, padx=2, pady=2)
+        btn_center = ttk.Label(pad_frame, text="✛", font=("Segoe UI", 11, "bold"), foreground="#ffd700", anchor="center")
+        btn_center.grid(row=1, column=1, padx=2, pady=2)
+        btn_right = ttk.Button(pad_frame, text="▶", width=4, command=lambda: self.nudge(self.nudge_step, 0))
+        btn_right.grid(row=1, column=2, padx=2, pady=2)
+        btn_down = ttk.Button(pad_frame, text="▼", width=4, command=lambda: self.nudge(0, self.nudge_step))
+        btn_down.grid(row=2, column=1, padx=2, pady=2)
+
+        # Bottom Shot Navigation Bar
+        nav_row = ttk.Frame(ctrl_frame)
+        nav_row.pack(side=tk.BOTTOM, fill=tk.X, pady=(4, 0))
+
+        btn_prev = ttk.Button(nav_row, text="◀ Prev Shot (P)", command=self.prev_shot)
+        btn_prev.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 3))
+
+        btn_next = ttk.Button(nav_row, text="Next Shot (N) ▶", command=self.next_shot)
+        btn_next.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(3, 0))
+
+    def _bind_events(self):
+        self.bind("<Up>", lambda e: self.nudge(0, -self.nudge_step))
+        self.bind("<Down>", lambda e: self.nudge(0, self.nudge_step))
+        self.bind("<Left>", lambda e: self.nudge(-self.nudge_step, 0))
+        self.bind("<Right>", lambda e: self.nudge(self.nudge_step, 0))
+
+        self.bind("<Shift-Up>", lambda e: self.nudge(0, -self.nudge_step * 3))
+        self.bind("<Shift-Down>", lambda e: self.nudge(0, self.nudge_step * 3))
+        self.bind("<Shift-Left>", lambda e: self.nudge(-self.nudge_step * 3, 0))
+        self.bind("<Shift-Right>", lambda e: self.nudge(self.nudge_step * 3, 0))
+
+        self.bind("p", lambda e: self.prev_shot())
+        self.bind("P", lambda e: self.prev_shot())
+        self.bind("[", lambda e: self.prev_shot())
+
+        self.bind("n", lambda e: self.next_shot())
+        self.bind("N", lambda e: self.next_shot())
+        self.bind("]", lambda e: self.next_shot())
+
+        self.bind("e", lambda e: self.destroy())
+        self.bind("E", lambda e: self.destroy())
+        self.bind("<Escape>", lambda e: self.destroy())
+
+        self.bind("+", lambda e: self.set_zoom(min(16.0, self.zoom_mag * 1.25)))
+        self.bind("=", lambda e: self.set_zoom(min(16.0, self.zoom_mag * 1.25)))
+        self.bind("-", lambda e: self.set_zoom(max(4.0, self.zoom_mag * 0.8)))
+
+    def on_canvas_click(self, event):
+        """Clicking inside loupe canvas centers on that point."""
+        shot = self.get_current_shot()
+        if not shot:
+            return
+        cx_loupe = self.canvas_dim / 2.0
+        cy_loupe = self.canvas_dim / 2.0
+        dx_can = (event.x - cx_loupe) / self.zoom_mag
+        dy_can = (event.y - cy_loupe) / self.zoom_mag
+        if abs(dx_can) > 0.05 or abs(dy_can) > 0.05:
+            self.nudge(dx_can, dy_can)
+
+    def redraw(self):
+        self.canvas.delete("all")
+        shot = self.get_current_shot()
+        if not shot or self.parent_editor.canonical_pil is None:
+            return
+
+        cx_loupe = self.canvas_dim / 2.0
+        cy_loupe = self.canvas_dim / 2.0
+        mag = self.zoom_mag
+        sx = float(shot["x"])
+        sy = float(shot["y"])
+        cal_mm = float(shot.get("caliber_mm", self.parent_editor.caliber_mm))
+        px_per_mm = self.parent_editor.pixels_per_mm
+        bx, by = self.parent_editor.bullseye
+
+        # 1. Render magnified target crop
+        iw, ih = self.parent_editor.canonical_pil.size
+        half_crop = (self.canvas_dim / 2.0) / mag
+        cl_x1 = max(0, int(math.floor(sx - half_crop)))
+        cl_y1 = max(0, int(math.floor(sy - half_crop)))
+        cl_x2 = min(iw, int(math.ceil(sx + half_crop)))
+        cl_y2 = min(ih, int(math.ceil(sy + half_crop)))
+
+        if cl_x2 > cl_x1 and cl_y2 > cl_y1:
+            crop_patch = self.parent_editor.canonical_pil.crop((cl_x1, cl_y1, cl_x2, cl_y2))
+            scaled_w = max(1, int(round((cl_x2 - cl_x1) * mag)))
+            scaled_h = max(1, int(round((cl_y2 - cl_y1) * mag)))
+            resample_mode = Image.Resampling.BILINEAR if mag <= 4.0 else Image.Resampling.NEAREST
+            scaled_patch = crop_patch.resize((scaled_w, scaled_h), resample=resample_mode)
+            self.loupe_photo = ImageTk.PhotoImage(scaled_patch)
+
+            dest_x = cx_loupe + (cl_x1 - sx) * mag
+            dest_y = cy_loupe + (cl_y1 - sy) * mag
+            self.canvas.create_image(dest_x, dest_y, image=self.loupe_photo, anchor=tk.NW)
+
+        # 2. Render NRA Scoring Ring Arcs passing through loupe view
+        bx_loupe = cx_loupe + (bx - sx) * mag
+        by_loupe = cy_loupe + (by - sy) * mag
+        dist_bull_loupe = math.hypot(cx_loupe - bx_loupe, cy_loupe - by_loupe)
+
+        rings_cfg = TargetRingsConfig(target_type=self.parent_editor.target_type)
+        rings_table = rings_cfg.get_rings_table()
+
+        for label, r_mm, _ in rings_table:
+            r_ring_px = r_mm * px_per_mm * mag
+            if abs(dist_bull_loupe - r_ring_px) <= (self.canvas_dim * 0.75):
+                color = "#ffd700" if label == "X" else ("#00ff78" if label == "10" else "#7e8396")
+                self.canvas.create_oval(
+                    bx_loupe - r_ring_px, by_loupe - r_ring_px,
+                    bx_loupe + r_ring_px, by_loupe + r_ring_px,
+                    outline=color, width=2, dash=(4, 2) if label not in ("X", "10") else None
+                )
+                # Label on arc closest to loupe center
+                if dist_bull_loupe > 1e-3:
+                    ux = (cx_loupe - bx_loupe) / dist_bull_loupe
+                    uy = (cy_loupe - by_loupe) / dist_bull_loupe
+                    lx = bx_loupe + ux * r_ring_px
+                    ly = by_loupe + uy * r_ring_px
+                    if 15 <= lx <= self.canvas_dim - 45 and 15 <= ly <= self.canvas_dim - 15:
+                        self.canvas.create_text(lx + 6, ly - 6, text=f"{label}-Ring", fill=color, font=("Segoe UI", 8, "bold"), anchor=tk.W)
+
+        # 3. Render Caliber Flange Gauge Reticle
+        rad_gauge_px = (cal_mm / 2.0) * px_per_mm * mag
+        score_val = shot.get("score", 0)
+        is_x = shot.get("is_x", False)
+        reticle_color = "#ffd700" if is_x else ("#00ff78" if score_val == 10 else "#00e5ff")
+
+        # Flange Gauge Circle
+        self.canvas.create_oval(
+            cx_loupe - rad_gauge_px, cy_loupe - rad_gauge_px,
+            cx_loupe + rad_gauge_px, cy_loupe + rad_gauge_px,
+            outline=reticle_color, width=2
+        )
+        # Engraved outer guide ring
+        self.canvas.create_oval(
+            cx_loupe - rad_gauge_px - 1, cy_loupe - rad_gauge_px - 1,
+            cx_loupe + rad_gauge_px + 1, cy_loupe + rad_gauge_px + 1,
+            outline="#ffffff", width=1, dash=(2, 4)
+        )
+
+        # Center Crosshair & Pip
+        arm = 12
+        self.canvas.create_line(cx_loupe - arm, cy_loupe, cx_loupe + arm, cy_loupe, fill="#ff2255", width=1)
+        self.canvas.create_line(cx_loupe, cy_loupe - arm, cx_loupe, cy_loupe + arm, fill="#ff2255", width=1)
+        self.canvas.create_oval(cx_loupe - 2, cy_loupe - 2, cx_loupe + 2, cy_loupe + 2, outline="#ff2255", fill="#ff2255")
+
+        # 4. Metrology & Inward Scoring Analysis (NRA Rule 14.3)
+        dist_px = math.hypot(sx - bx, sy - by)
+        dist_mm = dist_px / px_per_mm
+        r_bullet_mm = cal_mm / 2.0
+        flange_min_dist_mm = max(0.0, dist_mm - r_bullet_mm)
+
+        ruling_text = ""
+        for label, r_mm, pts in rings_table:
+            margin_mm = r_mm - flange_min_dist_mm
+            if margin_mm >= 0:
+                if margin_mm < 2.0:
+                    ruling_text = f"Touches {label}-ring by +{margin_mm:.2f} mm (NRA Rule 14.3 Inward Break)"
+                else:
+                    ruling_text = f"Inside {label}-ring (+{margin_mm:.2f} mm margin to line)"
+                break
+        if not ruling_text:
+            ruling_text = f"Outside scoring rings (Miss - {dist_mm:.1f} mm radius)"
+
+        x_badge = " [X]" if is_x else ""
+        self.lbl_score.config(text=f"AWARDED: {score_val}{x_badge}", foreground=reticle_color)
+        self.lbl_ruling.config(text=ruling_text)
+        self.lbl_details.config(
+            text=f"Coords: ({sx:.1f}, {sy:.1f}) px  |  Radius: {dist_mm:.2f} mm  |  Caliber: {cal_mm:.2f} mm"
+        )
+
+
 class AnnotationEditor(tk.Tk):
     """
     High-performance interactive desktop GUI for reviewing, adding, moving, and deleting
@@ -78,6 +402,7 @@ class AnnotationEditor(tk.Tk):
         self.drag_start_item_pos: Tuple[float, float] = (0.0, 0.0)
         self.is_modified: bool = False
         self.undo_stack: List[List[Dict[str, Any]]] = []
+        self.eagle_eye_dialog: Optional[EagleEyeLoupe] = None
 
         # Modes: 'shot' (add/move shots), 'bullseye' (move bullseye)
         self.edit_mode_var = tk.StringVar(value="shot")
@@ -124,7 +449,28 @@ class AnnotationEditor(tk.Tk):
         self.style.configure("Danger.TButton", background="#a82020", foreground="#ffffff")
         self.style.map("Danger.TButton", background=[("active", "#cf2a2a"), ("pressed", "#781515")])
 
-        self.style.configure("TCombobox", fieldbackground="#2b2d38", background="#323440", foreground=text_fg)
+        # Caliber Combobox: exact match to Open Directory button (#323440 background, #f0f2f5 foreground)
+        self.style.configure(
+            "TCombobox",
+            fieldbackground="#323440",
+            background="#323440",
+            foreground="#f0f2f5",
+            arrowcolor="#f0f2f5",
+            bordercolor="#444654",
+            padding=(6, 3)
+        )
+        self.style.map(
+            "TCombobox",
+            fieldbackground=[("readonly", "#323440"), ("disabled", "#2b2d38"), ("active", "#3f4252")],
+            background=[("readonly", "#323440"), ("disabled", "#2b2d38"), ("active", "#3f4252")],
+            foreground=[("readonly", "#f0f2f5"), ("disabled", "#70737d"), ("active", "#ffffff")],
+            selectbackground=[("readonly", "#323440")],
+            selectforeground=[("readonly", "#f0f2f5")]
+        )
+        self.option_add("*TCombobox*Listbox.background", "#323440")
+        self.option_add("*TCombobox*Listbox.foreground", "#f0f2f5")
+        self.option_add("*TCombobox*Listbox.selectBackground", "#007acc")
+        self.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
         self.style.configure("TCheckbutton", background=dark_bg, foreground=text_fg)
         self.style.configure("TRadiobutton", background=dark_bg, foreground=text_fg)
 
@@ -225,6 +571,7 @@ class AnnotationEditor(tk.Tk):
         self.canvas.bind("<B1-Motion>", self.on_canvas_left_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_canvas_left_release)
 
+        self.canvas.bind("<Double-Button-1>", self.on_canvas_double_click)
         self.canvas.bind("<Button-3>", self.on_canvas_right_click)
         self.canvas.bind("<Button-2>", self.on_canvas_middle_click)
         self.canvas.bind("<B2-Motion>", self.on_canvas_middle_drag)
@@ -295,16 +642,29 @@ class AnnotationEditor(tk.Tk):
         tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
         self.tree_shots.bind("<<TreeviewSelect>>", self.on_tree_select)
+        self.tree_shots.bind("<Double-Button-1>", lambda e: self.on_open_eagle_eye())
 
         # Bottom Action Buttons on Sidebar
-        side_actions = ttk.Frame(hud_frame, padding=(0, 8))
+        side_actions = ttk.Frame(hud_frame, padding=(0, 6))
         side_actions.pack(side=tk.BOTTOM, fill=tk.X)
 
-        btn_del_shot = ttk.Button(side_actions, text="Delete Selected Shot (Del)", style="Danger.TButton", command=self.on_delete_selected)
-        btn_del_shot.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
+        row_del = ttk.Frame(side_actions)
+        row_del.pack(side=tk.TOP, fill=tk.X, pady=(0, 4))
 
-        btn_undo = ttk.Button(side_actions, text="Undo (Ctrl+Z)", command=self.on_undo)
-        btn_undo.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(4, 0))
+        btn_del_shot = ttk.Button(row_del, text="Delete Shot (Del)", style="Danger.TButton", command=self.on_delete_selected)
+        btn_del_shot.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 3))
+
+        btn_del_all = ttk.Button(row_del, text="✕ Delete All Shots", style="Danger.TButton", command=self.on_clear_shots)
+        btn_del_all.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(3, 0))
+
+        row_tools = ttk.Frame(side_actions)
+        row_tools.pack(side=tk.TOP, fill=tk.X)
+
+        btn_eagle = ttk.Button(row_tools, text="🔍 Eagle Eye Gauge (E)", style="Accent.TButton", command=self.on_open_eagle_eye)
+        btn_eagle.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 3))
+
+        btn_undo = ttk.Button(row_tools, text="↺ Undo (Ctrl+Z)", command=self.on_undo)
+        btn_undo.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(3, 0))
 
         # 3. Bottom Status Bar
         status_bar = ttk.Frame(self, relief="sunken", padding=(8, 4))
@@ -313,7 +673,7 @@ class AnnotationEditor(tk.Tk):
         self.lbl_cursor_pos = ttk.Label(status_bar, text="Cursor: X=0.0, Y=0.0", width=34)
         self.lbl_cursor_pos.pack(side=tk.LEFT)
 
-        self.lbl_status_msg = ttk.Label(status_bar, text="Ready. Click canvas to add shots | Drag to move | Right-click to remove", foreground="#00d7ff")
+        self.lbl_status_msg = ttk.Label(status_bar, text="Ready. Click canvas to add shots | Drag to move | Press 'E' for Eagle Eye Loupe", foreground="#00d7ff")
         self.lbl_status_msg.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
 
         self.lbl_save_status = ttk.Label(status_bar, text="", font=("Segoe UI", 9, "bold"), foreground="#00ff78")
@@ -324,6 +684,8 @@ class AnnotationEditor(tk.Tk):
         self.bind("<Control-z>", lambda e: self.on_undo())
         self.bind("<Delete>", lambda e: self.on_delete_selected())
         self.bind("<BackSpace>", lambda e: self.on_delete_selected())
+        self.bind("e", lambda e: self.on_open_eagle_eye())
+        self.bind("E", lambda e: self.on_open_eagle_eye())
         self.bind("n", lambda e: self.on_next_target())
         self.bind("N", lambda e: self.on_next_target())
         self.bind("p", lambda e: self.on_prev_target())
@@ -440,6 +802,13 @@ class AnnotationEditor(tk.Tk):
         # Recalculate metrology and fit to window
         self.recalculate_scores()
         self.on_fit_window()
+
+        if hasattr(self, "eagle_eye_dialog") and self.eagle_eye_dialog and self.eagle_eye_dialog.winfo_exists():
+            if self.shots:
+                self.eagle_eye_dialog.set_shot_index(0)
+            else:
+                self.eagle_eye_dialog.destroy()
+                self.eagle_eye_dialog = None
 
     def _resolve_canonical_image_path(self, json_p: Path, ann: TargetAnnotation) -> Optional[Path]:
         json_dir = json_p.parent
@@ -707,6 +1076,8 @@ class AnnotationEditor(tk.Tk):
         # Update HUD labels
         self._update_hud_display()
         self._populate_shot_table()
+        if hasattr(self, "eagle_eye_dialog") and self.eagle_eye_dialog and self.eagle_eye_dialog.winfo_exists():
+            self.eagle_eye_dialog.redraw()
 
     def _update_hud_display(self):
         m = self.group_metrics
@@ -754,6 +1125,8 @@ class AnnotationEditor(tk.Tk):
             item_idx = self.tree_shots.index(selected_items[0])
             self.selected_shot_idx = item_idx
             self.redraw_canvas()
+            if hasattr(self, "eagle_eye_dialog") and self.eagle_eye_dialog and self.eagle_eye_dialog.winfo_exists():
+                self.eagle_eye_dialog.set_shot_index(item_idx)
 
     # =========================================================================
     # Interactive Manipulation: Add, Drag, Delete, Undo
@@ -813,6 +1186,8 @@ class AnnotationEditor(tk.Tk):
             self.drag_start_item_pos = (self.shots[clicked_shot_idx]["x"], self.shots[clicked_shot_idx]["y"])
             self.redraw_canvas()
             self._select_tree_row(clicked_shot_idx)
+            if hasattr(self, "eagle_eye_dialog") and self.eagle_eye_dialog and self.eagle_eye_dialog.winfo_exists():
+                self.eagle_eye_dialog.set_shot_index(clicked_shot_idx)
         else:
             # Empty canvas click: Add new shot marker!
             if 0 <= img_x <= self.canvas_size and 0 <= img_y <= self.canvas_size:
@@ -831,7 +1206,40 @@ class AnnotationEditor(tk.Tk):
                 self.selected_shot_idx = len(self.shots) - 1
                 self.recalculate_scores()
                 self.redraw_canvas()
+                self._select_tree_row(self.selected_shot_idx)
+                if hasattr(self, "eagle_eye_dialog") and self.eagle_eye_dialog and self.eagle_eye_dialog.winfo_exists():
+                    self.eagle_eye_dialog.set_shot_index(self.selected_shot_idx)
                 self.lbl_status_msg.config(text=f"Added shot #{new_id} at ({img_x:.1f}, {img_y:.1f})")
+
+    def on_canvas_double_click(self, event):
+        """Double clicking on a shot opens the Eagle Eye scoring gauge."""
+        img_x, img_y = self.screen_to_img(event.x, event.y)
+        for idx, shot in enumerate(self.shots):
+            dist_px = math.hypot(img_x - shot["x"], img_y - shot["y"])
+            hit_radius = max(6.0 / self.zoom, (shot["caliber_mm"] / 2.0) * self.pixels_per_mm)
+            if dist_px <= hit_radius + 4.0:
+                self.selected_shot_idx = idx
+                self._select_tree_row(idx)
+                self.redraw_canvas()
+                self.on_open_eagle_eye()
+                return
+
+    def on_open_eagle_eye(self):
+        """Opens or refocuses the magnified Eagle Eye Scoring Gauge dialog."""
+        if not self.shots:
+            messagebox.showinfo("Eagle Eye Gauge", "No shots to inspect. Click the canvas to place a shot first.")
+            return
+        if self.selected_shot_idx is None or not (0 <= self.selected_shot_idx < len(self.shots)):
+            self.selected_shot_idx = 0
+            self._select_tree_row(0)
+            self.redraw_canvas()
+
+        if hasattr(self, "eagle_eye_dialog") and self.eagle_eye_dialog and self.eagle_eye_dialog.winfo_exists():
+            self.eagle_eye_dialog.set_shot_index(self.selected_shot_idx)
+            self.eagle_eye_dialog.lift()
+            self.eagle_eye_dialog.focus_force()
+        else:
+            self.eagle_eye_dialog = EagleEyeLoupe(self, self.selected_shot_idx)
 
     def on_canvas_left_drag(self, event):
         img_x, img_y = self.screen_to_img(event.x, event.y)
@@ -863,7 +1271,16 @@ class AnnotationEditor(tk.Tk):
                 self.push_undo()
                 del_id = shot["id"]
                 del self.shots[idx]
-                self.selected_shot_idx = None
+                if not self.shots:
+                    self.selected_shot_idx = None
+                    if hasattr(self, "eagle_eye_dialog") and self.eagle_eye_dialog and self.eagle_eye_dialog.winfo_exists():
+                        self.eagle_eye_dialog.destroy()
+                        self.eagle_eye_dialog = None
+                else:
+                    self.selected_shot_idx = min(idx, len(self.shots) - 1)
+                    self._select_tree_row(self.selected_shot_idx)
+                    if hasattr(self, "eagle_eye_dialog") and self.eagle_eye_dialog and self.eagle_eye_dialog.winfo_exists():
+                        self.eagle_eye_dialog.set_shot_index(self.selected_shot_idx)
                 self.recalculate_scores()
                 self.redraw_canvas()
                 self.lbl_status_msg.config(text=f"Deleted shot #{del_id}")
@@ -900,21 +1317,35 @@ class AnnotationEditor(tk.Tk):
             self.push_undo()
             del_id = self.shots[self.selected_shot_idx]["id"]
             del self.shots[self.selected_shot_idx]
-            self.selected_shot_idx = None
+            if not self.shots:
+                self.selected_shot_idx = None
+                if hasattr(self, "eagle_eye_dialog") and self.eagle_eye_dialog and self.eagle_eye_dialog.winfo_exists():
+                    self.eagle_eye_dialog.destroy()
+                    self.eagle_eye_dialog = None
+            else:
+                self.selected_shot_idx = min(self.selected_shot_idx, len(self.shots) - 1)
+                self._select_tree_row(self.selected_shot_idx)
+                if hasattr(self, "eagle_eye_dialog") and self.eagle_eye_dialog and self.eagle_eye_dialog.winfo_exists():
+                    self.eagle_eye_dialog.set_shot_index(self.selected_shot_idx)
             self.recalculate_scores()
             self.redraw_canvas()
             self.lbl_status_msg.config(text=f"Deleted shot #{del_id}")
 
     def on_clear_shots(self):
         if not self.shots:
+            messagebox.showinfo("Delete All Shots", "There are no shots on this target.")
             return
-        if messagebox.askyesno("Clear All Shots", "Are you sure you want to remove all shot markers on this target?"):
+        shot_count = len(self.shots)
+        if messagebox.askyesno("Delete All Shots", f"Are you sure you want to remove all {shot_count} shot markers on this target?"):
             self.push_undo()
             self.shots.clear()
             self.selected_shot_idx = None
+            if hasattr(self, "eagle_eye_dialog") and self.eagle_eye_dialog and self.eagle_eye_dialog.winfo_exists():
+                self.eagle_eye_dialog.destroy()
+                self.eagle_eye_dialog = None
             self.recalculate_scores()
             self.redraw_canvas()
-            self.lbl_status_msg.config(text="Cleared all shot markers. Click canvas to add correct bullet holes.")
+            self.lbl_status_msg.config(text=f"Removed all {shot_count} shots. Click canvas to add correct bullet holes.")
 
     def on_renumber_shots(self):
         self.push_undo()
