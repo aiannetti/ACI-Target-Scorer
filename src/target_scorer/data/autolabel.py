@@ -199,10 +199,44 @@ def autolabel_target_image(
     ann.to_json(json_path)
 
     # 4. Generate Visual Verification Review Card
+    review_path = out_dir / f"{target_id}_review.png"
+    review_bgr = render_review_card(
+        canonical_bgr=canonical_bgr,
+        annotation=ann,
+        output_path=review_path,
+        redact_pii=redact_pii,
+    )
+
+    return ann, json_path, review_path
+
+
+def render_review_card(
+    canonical_bgr: np.ndarray,
+    annotation: TargetAnnotation,
+    output_path: Optional[Union[str, Path]] = None,
+    redact_pii: bool = False,
+) -> np.ndarray:
+    """
+    Renders visual verification review card with annotated crosshairs,
+    caliber rings, shot badges, and score HUD banner.
+    """
     review_bgr = canonical_bgr.copy()
+    canvas_size = annotation.canvas_size
+    pixels_per_mm = annotation.pixels_per_mm
+    bull_center = annotation.bullseye_center
+    annotated_shots = annotation.shots
+    target_id = annotation.target_id
+    target_type = annotation.target_type
+    total_score = annotation.total_score
+    x_count = annotation.x_count
     sf = canvas_size / 512.0
 
     if redact_pii:
+        rings_cfg = TargetRingsConfig(target_type=target_type)
+        rings_table = rings_cfg.get_rings_table()
+        outer_margin_rad = int(round(rings_table[-1][1] * pixels_per_mm + 12.0 * (pixels_per_mm / 4.0)))
+        bc_int_x, bc_int_y = int(round(bull_center[0])), int(round(bull_center[1]))
+        header_h = max(28, int(round(bc_int_y - outer_margin_rad + 8)))
         badge_y = max(18, int(round(header_h * 0.6)))
         cv2.putText(
             review_bgr, "[COMPETITOR REGISTRATION REDACTED]", (18, badge_y),
@@ -217,8 +251,9 @@ def autolabel_target_image(
     for s in annotated_shots:
         sx, sy = int(round(s.center_x)), int(round(s.center_y))
         radius_px = int(round((s.caliber_mm / 2.0) * pixels_per_mm))
-        # Bullet caliber circle (neon green)
-        cv2.circle(review_bgr, (sx, sy), radius_px, (0, 255, 120), 2, cv2.LINE_AA)
+        gauge_color = (0, 215, 255) if s.is_x else ((0, 255, 120) if s.score >= 9 else (0, 165, 255))
+        # Bullet caliber circle
+        cv2.circle(review_bgr, (sx, sy), radius_px, gauge_color, 2, cv2.LINE_AA)
         cv2.drawMarker(review_bgr, (sx, sy), (0, 0, 255), cv2.MARKER_CROSS, int(12 * sf), 1, cv2.LINE_AA)
         # Shot badge
         tag = f"#{s.id}:{s.score}{'X' if s.is_x else ''}"
@@ -227,12 +262,15 @@ def autolabel_target_image(
             cv2.FONT_HERSHEY_SIMPLEX, 0.40 * sf, (0, 255, 255), 1, cv2.LINE_AA
         )
 
-    # Top & Bottom HUD badges
-    header = f"AUTOLABEL REVIEW: {target_id} ({target_type}) | Score: {group_metrics.total_score} ({len(annotated_shots)} shots)"
-    cv2.rectangle(review_bgr, (8, 8), (int(500 * sf), int(36 * sf)), (20, 20, 24), -1)
+    # Top HUD badge
+    x_str = f" ({x_count}X)" if x_count > 0 else ""
+    header = f"REVIEW: {target_id} ({target_type}) | Score: {total_score}{x_str} ({len(annotated_shots)} shots)"
+    cv2.rectangle(review_bgr, (8, 8), (int(520 * sf), int(36 * sf)), (20, 20, 24), -1)
     cv2.putText(review_bgr, header, (16, int(26 * sf)), cv2.FONT_HERSHEY_SIMPLEX, 0.46 * sf, (0, 255, 200), 1, cv2.LINE_AA)
 
-    review_path = out_dir / f"{target_id}_review.png"
-    cv2.imwrite(str(review_path), review_bgr)
+    if output_path is not None:
+        out_p = Path(output_path)
+        out_p.parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(out_p), review_bgr)
 
-    return ann, json_path, review_path
+    return review_bgr

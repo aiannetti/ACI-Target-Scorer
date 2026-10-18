@@ -40,6 +40,7 @@ _LAZY_EXPORTS = {
     "train_one_epoch": ("target_scorer.train", "train_one_epoch"),
     "validate_one_epoch": ("target_scorer.train", "validate_one_epoch"),
     "calculate_localization_metrics": ("target_scorer.train", "calculate_localization_metrics"),
+    "launch_annotation_editor": ("target_scorer.gui.annotation_editor", "launch_annotation_editor"),
 }
 
 

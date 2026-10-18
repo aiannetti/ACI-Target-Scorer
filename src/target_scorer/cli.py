@@ -129,6 +129,41 @@ def colab_autolabel_cli():
     )
 
 
+def annotate_cli():
+    import argparse
+    from target_scorer.gui.annotation_editor import launch_annotation_editor
+
+    parser = argparse.ArgumentParser(
+        prog="target-scorer annotate",
+        description="Interactive GUI for Reviewing and Correcting Shot Markers and Target Scores"
+    )
+    parser.add_argument(
+        "path",
+        type=str,
+        nargs="?",
+        default=None,
+        help="Path to directory containing JSON annotations (e.g. autolabeled_photos/B-3 or datasets/real_targets) or single JSON file"
+    )
+    parser.add_argument(
+        "--dir",
+        type=str,
+        dest="dir_opt",
+        default=None,
+        help="Directory containing JSON annotations and target images"
+    )
+    parser.add_argument(
+        "--target",
+        type=str,
+        default=None,
+        choices=["B-2", "B-3", "b-2", "b-3"],
+        help="Override NRA target type (B-2 or B-3)"
+    )
+    args = parser.parse_args(sys.argv[2:])
+
+    target_path = args.dir_opt or args.path
+    launch_annotation_editor(target_path=target_path, target_type=args.target.upper() if args.target else None)
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="target-scorer",
@@ -141,6 +176,7 @@ def main():
     subparsers.add_parser("colab-autolabel", help="Run cloud GPU assisted auto-labeling via Google Colab CLI")
     subparsers.add_parser("rectify", help="Run standalone geometric rectification")
     subparsers.add_parser("autolabel", help="Run model-assisted active learning and auto-labeling")
+    subparsers.add_parser("annotate", help="Launch interactive GUI to manipulate shot markers and re-score targets")
 
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         parser.print_help()
@@ -163,6 +199,8 @@ def main():
         rectify_cli()
     elif subcommand == "autolabel":
         autolabel_cli()
+    elif subcommand == "annotate":
+        annotate_cli()
     else:
         parser.print_help()
         sys.exit(1)

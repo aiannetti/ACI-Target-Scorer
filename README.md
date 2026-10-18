@@ -570,7 +570,33 @@ Each processed image generates:
 
 ---
 
-### 5. Standalone Target Rectification (`target-scorer rectify`)
+### 5. Interactive Shot Annotation & Correction GUI (`target-scorer annotate`)
+
+Rapidly review, add, move, or delete bullet hole markers on autolabeled target images with **real-time official NRA scoring metrology**. When saved, it updates the ground-truth `.json` file and regenerates the `*_review.png` image on disk:
+
+```bash
+# Launch GUI on a folder of autolabeled targets
+target-scorer annotate autolabeled_photos/B-3
+
+# Or on any target directory
+target-scorer annotate datasets/real_targets
+```
+
+#### Key GUI Capabilities & Shortcuts:
+* **Click empty canvas:** Instantly add a new shot marker at exact coordinate.
+* **Click & drag existing marker:** Reposition marker in real-time; scores recalculate dynamically.
+* **Arrow keys (↑ / ↓ / ← / →):** Sub-pixel coordinate nudging (1px precision, or 5px with `Shift`).
+* **Right-click / Delete key:** Remove a false positive shot marker.
+* **Mouse wheel:** Smooth zoom centered on cursor (from whole card overview up to 1200% microscopic inspection).
+* **Middle-click drag:** Pan smoothly around the canvas.
+* **N / P:** Next / Previous target in the directory.
+* **Ctrl+S:** Save corrected coordinates, ring scores, and group dispersion to `.json` and regenerate `*_review.png`.
+* **Ctrl+Z:** Undo last action.
+* **Live HUD:** Extreme spread, mean radius, total score, X-count, and per-shot distance table update instantly.
+
+---
+
+### 6. Standalone Target Rectification (`target-scorer rectify`)
 
 Unwarp perspective distortion and extract an orientation-corrected, metric-calibrated canonical crop across all supported formats (HEIC, RAW/DNG, WebP, PNG, JPEG, or stdin):
 
