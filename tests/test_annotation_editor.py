@@ -202,9 +202,84 @@ class TestAnnotationEditor(unittest.TestCase):
             # Close loupe
             loupe.destroy()
             self.assertFalse(loupe.winfo_exists())
+            self.assertIsNone(app.eagle_eye_dialog)
+        finally:
+            app.destroy()
+
+    def test_eagle_eye_toggle_and_exit_handlers(self):
+        """Verifies Eagle Eye toggling, on_close handlers, and parent reference resets."""
+        app = AnnotationEditor(target_dir_or_file=self.tmp_dir)
+        try:
+            # 1. Open Eagle Eye
+            app.on_open_eagle_eye()
+            self.assertIsNotNone(app.eagle_eye_dialog)
+            self.assertTrue(app.eagle_eye_dialog.winfo_exists())
+
+            # 2. Toggle off via on_open_eagle_eye(toggle=True)
+            app.on_open_eagle_eye(toggle=True)
+            self.assertIsNone(app.eagle_eye_dialog)
+
+            # 3. Open again and exit via on_close (simulating Esc / E / Close button)
+            app.on_open_eagle_eye()
+            loupe = app.eagle_eye_dialog
+            self.assertIsNotNone(loupe)
+            loupe.on_close()
+            self.assertIsNone(app.eagle_eye_dialog)
+
+            # 4. close_eagle_eye is safe to call repeatedly when already None
+            app.close_eagle_eye()
+            self.assertIsNone(app.eagle_eye_dialog)
+        finally:
+            app.destroy()
+
+    def test_treeview_event_recursion_suppression(self):
+        """Verifies that selecting tree rows and populating tables does not trigger recursion."""
+        app = AnnotationEditor(target_dir_or_file=self.tmp_dir)
+        try:
+            # Open Eagle Eye
+            app.on_open_eagle_eye()
+            loupe = app.eagle_eye_dialog
+            self.assertIsNotNone(loupe)
+
+            # Manually trigger on_tree_select with same item - should return immediately without loop
+            app.selected_shot_idx = 0
+            app.on_tree_select()
+            self.assertEqual(app.selected_shot_idx, 0)
+
+            # Programmatic selection must suppress treeview events
+            self.assertFalse(app._suppress_tree_events)
+            app._select_tree_row(1)
+            self.assertFalse(app._suppress_tree_events)
+
+            # Set shot index via loupe
+            loupe.set_shot_index(1)
+            self.assertEqual(app.selected_shot_idx, 1)
+            self.assertEqual(loupe.shot_idx, 1)
+
+            # Repopulating shot table must not cause recursion
+            app.recalculate_scores()
+            self.assertFalse(app._suppress_tree_events)
+        finally:
+            app.destroy()
+
+    def test_eagle_eye_cleanup_on_shot_deletion(self):
+        """Verifies Eagle Eye is cleanly closed when all shots are deleted or cleared."""
+        from unittest.mock import patch
+
+        app = AnnotationEditor(target_dir_or_file=self.tmp_dir)
+        try:
+            app.on_open_eagle_eye()
+            self.assertIsNotNone(app.eagle_eye_dialog)
+
+            # Clear shots -> eagle eye must be automatically closed
+            with patch("tkinter.messagebox.askyesno", return_value=True):
+                app.on_clear_shots()
+            self.assertIsNone(app.eagle_eye_dialog)
+            self.assertEqual(len(app.shots), 0)
         finally:
             app.destroy()
 
 
 if __name__ == "__main__":
     unittest.main()
+

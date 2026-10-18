@@ -42,23 +42,49 @@ class EagleEyeLoupe(tk.Toplevel):
         self.loupe_photo: Optional[ImageTk.PhotoImage] = None
 
         self.title(f"Eagle Eye Scoring Gauge - Shot #{self.get_current_shot_id()}")
-        self.geometry("450x660")
-        self.minsize(420, 640)
+        self.geometry("450x680")
+        self.minsize(420, 660)
         self.configure(bg="#18191c")
         self.transient(parent)
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
 
         self._build_ui()
         self._bind_events()
         self.redraw()
 
-        # Center relative to parent
-        self.update_idletasks()
+        # Center relative to parent window without blocking event loop
         try:
-            px = parent.winfo_x() + (parent.winfo_width() - 450) // 2
-            py = parent.winfo_y() + (parent.winfo_height() - 660) // 2
+            px = parent.winfo_rootx() + (parent.winfo_width() - 450) // 2
+            py = parent.winfo_rooty() + (parent.winfo_height() - 680) // 2
             self.geometry(f"+{max(20, px)}+{max(20, py)}")
         except Exception:
             pass
+
+        self.focus_force()
+
+    def on_close(self, event=None):
+        """Cleanly closes the Eagle Eye loupe dialog and returns focus to main editor."""
+        try:
+            if getattr(self.parent_editor, "eagle_eye_dialog", None) is self:
+                self.parent_editor.eagle_eye_dialog = None
+        except Exception:
+            pass
+        try:
+            self.destroy()
+        except Exception:
+            pass
+        try:
+            self.parent_editor.focus_force()
+        except Exception:
+            pass
+
+    def destroy(self):
+        try:
+            if getattr(self.parent_editor, "eagle_eye_dialog", None) is self:
+                self.parent_editor.eagle_eye_dialog = None
+        except Exception:
+            pass
+        super().destroy()
 
     def get_current_shot(self) -> Optional[Dict[str, Any]]:
         if 0 <= self.shot_idx < len(self.parent_editor.shots):
@@ -71,12 +97,14 @@ class EagleEyeLoupe(tk.Toplevel):
 
     def set_shot_index(self, idx: int):
         if not self.parent_editor.shots:
-            self.destroy()
+            self.on_close()
             return
-        self.shot_idx = max(0, min(len(self.parent_editor.shots) - 1, idx))
-        self.parent_editor.selected_shot_idx = self.shot_idx
-        self.parent_editor._select_tree_row(self.shot_idx)
-        self.parent_editor.redraw_canvas()
+        clamped_idx = max(0, min(len(self.parent_editor.shots) - 1, idx))
+        self.shot_idx = clamped_idx
+        if self.parent_editor.selected_shot_idx != clamped_idx:
+            self.parent_editor.selected_shot_idx = clamped_idx
+            self.parent_editor._select_tree_row(clamped_idx)
+            self.parent_editor.redraw_canvas()
         shot_id = self.get_current_shot_id()
         self.title(f"Eagle Eye Scoring Gauge - Shot #{shot_id}")
         self.lbl_shot_title.config(text=f"SHOT #{shot_id} OPTICAL INSPECTION")
@@ -110,7 +138,6 @@ class EagleEyeLoupe(tk.Toplevel):
         shot["y"] = max(0.0, min(float(self.parent_editor.canvas_size), shot["y"] + dy_px))
         self.parent_editor.recalculate_scores()
         self.parent_editor.redraw_canvas()
-        self.redraw()
 
     def _build_ui(self):
         # 1. Top Header
@@ -121,7 +148,7 @@ class EagleEyeLoupe(tk.Toplevel):
         self.lbl_shot_title = ttk.Label(top_frame, text=f"SHOT #{shot_id} OPTICAL INSPECTION", style="Header.TLabel")
         self.lbl_shot_title.pack(side=tk.LEFT)
 
-        btn_close = ttk.Button(top_frame, text="✕", width=3, command=self.destroy)
+        btn_close = ttk.Button(top_frame, text="✕ Close (Esc)", style="Danger.TButton", command=self.on_close)
         btn_close.pack(side=tk.RIGHT)
 
         # 2. Reticle Canvas Frame
@@ -190,13 +217,20 @@ class EagleEyeLoupe(tk.Toplevel):
 
         # Bottom Shot Navigation Bar
         nav_row = ttk.Frame(ctrl_frame)
-        nav_row.pack(side=tk.BOTTOM, fill=tk.X, pady=(4, 0))
+        nav_row.pack(side=tk.TOP, fill=tk.X, pady=(4, 0))
 
         btn_prev = ttk.Button(nav_row, text="◀ Prev Shot (P)", command=self.prev_shot)
         btn_prev.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 3))
 
         btn_next = ttk.Button(nav_row, text="Next Shot (N) ▶", command=self.next_shot)
         btn_next.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(3, 0))
+
+        # Big dedicated Exit button
+        exit_row = ttk.Frame(ctrl_frame)
+        exit_row.pack(side=tk.TOP, fill=tk.X, pady=(8, 0))
+
+        btn_exit = ttk.Button(exit_row, text="✕ Exit Eagle Eye (Esc / E)", style="Danger.TButton", command=self.on_close)
+        btn_exit.pack(fill=tk.X, expand=True)
 
     def _bind_events(self):
         self.bind("<Up>", lambda e: self.nudge(0, -self.nudge_step))
@@ -217,9 +251,11 @@ class EagleEyeLoupe(tk.Toplevel):
         self.bind("N", lambda e: self.next_shot())
         self.bind("]", lambda e: self.next_shot())
 
-        self.bind("e", lambda e: self.destroy())
-        self.bind("E", lambda e: self.destroy())
-        self.bind("<Escape>", lambda e: self.destroy())
+        self.bind("e", self.on_close)
+        self.bind("E", self.on_close)
+        self.bind("q", self.on_close)
+        self.bind("Q", self.on_close)
+        self.bind("<Escape>", self.on_close)
 
         self.bind("+", lambda e: self.set_zoom(min(16.0, self.zoom_mag * 1.25)))
         self.bind("=", lambda e: self.set_zoom(min(16.0, self.zoom_mag * 1.25)))
@@ -403,6 +439,7 @@ class AnnotationEditor(tk.Tk):
         self.is_modified: bool = False
         self.undo_stack: List[List[Dict[str, Any]]] = []
         self.eagle_eye_dialog: Optional[EagleEyeLoupe] = None
+        self._suppress_tree_events: bool = False
 
         # Modes: 'shot' (add/move shots), 'bullseye' (move bullseye)
         self.edit_mode_var = tk.StringVar(value="shot")
@@ -807,8 +844,7 @@ class AnnotationEditor(tk.Tk):
             if self.shots:
                 self.eagle_eye_dialog.set_shot_index(0)
             else:
-                self.eagle_eye_dialog.destroy()
-                self.eagle_eye_dialog = None
+                self.close_eagle_eye()
 
     def _resolve_canonical_image_path(self, json_p: Path, ann: TargetAnnotation) -> Optional[Path]:
         json_dir = json_p.parent
@@ -1102,27 +1138,35 @@ class AnnotationEditor(tk.Tk):
         self.lbl_mean_radius.config(text=f"Mean Radius:    {m.mean_radius_mm:.2f} mm ({mr_in:.2f} in / {m.mean_radius_moa:.1f} MOA)")
 
     def _populate_shot_table(self):
-        for item in self.tree_shots.get_children():
-            self.tree_shots.delete(item)
+        self._suppress_tree_events = True
+        try:
+            for item in self.tree_shots.get_children():
+                self.tree_shots.delete(item)
 
-        for idx, s in enumerate(self.shots):
-            dist_val = s.get("dist_mm", 0.0)
-            coords_str = f"{s['x']:.1f}, {s['y']:.1f}"
-            item_id = self.tree_shots.insert("", tk.END, values=(
-                f"#{s['id']}",
-                s.get("score", 0),
-                "X" if s.get("is_x") else "",
-                f"{dist_val:.2f}",
-                coords_str
-            ))
-            if idx == self.selected_shot_idx:
-                self.tree_shots.selection_set(item_id)
-                self.tree_shots.see(item_id)
+            for idx, s in enumerate(self.shots):
+                dist_val = s.get("dist_mm", 0.0)
+                coords_str = f"{s['x']:.1f}, {s['y']:.1f}"
+                item_id = self.tree_shots.insert("", tk.END, values=(
+                    f"#{s['id']}",
+                    s.get("score", 0),
+                    "X" if s.get("is_x") else "",
+                    f"{dist_val:.2f}",
+                    coords_str
+                ))
+                if idx == self.selected_shot_idx:
+                    self.tree_shots.selection_set(item_id)
+                    self.tree_shots.see(item_id)
+        finally:
+            self._suppress_tree_events = False
 
-    def on_tree_select(self, event):
+    def on_tree_select(self, event=None):
+        if getattr(self, "_suppress_tree_events", False):
+            return
         selected_items = self.tree_shots.selection()
         if selected_items:
             item_idx = self.tree_shots.index(selected_items[0])
+            if self.selected_shot_idx == item_idx:
+                return
             self.selected_shot_idx = item_idx
             self.redraw_canvas()
             if hasattr(self, "eagle_eye_dialog") and self.eagle_eye_dialog and self.eagle_eye_dialog.winfo_exists():
@@ -1221,25 +1265,46 @@ class AnnotationEditor(tk.Tk):
                 self.selected_shot_idx = idx
                 self._select_tree_row(idx)
                 self.redraw_canvas()
-                self.on_open_eagle_eye()
+                self.on_open_eagle_eye(toggle=False)
                 return
 
-    def on_open_eagle_eye(self):
-        """Opens or refocuses the magnified Eagle Eye Scoring Gauge dialog."""
+    def close_eagle_eye(self):
+        """Safely closes the Eagle Eye loupe dialog if open and refocuses parent."""
+        if hasattr(self, "eagle_eye_dialog") and self.eagle_eye_dialog:
+            dialog = self.eagle_eye_dialog
+            self.eagle_eye_dialog = None
+            try:
+                if dialog.winfo_exists():
+                    dialog.destroy()
+            except Exception:
+                pass
+        try:
+            self.focus_force()
+        except Exception:
+            pass
+
+    def on_open_eagle_eye(self, toggle: bool = True):
+        """Opens, toggles, or refocuses the magnified Eagle Eye Scoring Gauge dialog."""
         if not self.shots:
             messagebox.showinfo("Eagle Eye Gauge", "No shots to inspect. Click the canvas to place a shot first.")
             return
+
+        if hasattr(self, "eagle_eye_dialog") and self.eagle_eye_dialog and self.eagle_eye_dialog.winfo_exists():
+            if toggle:
+                self.close_eagle_eye()
+                return
+            else:
+                self.eagle_eye_dialog.set_shot_index(self.selected_shot_idx if self.selected_shot_idx is not None else 0)
+                self.eagle_eye_dialog.lift()
+                self.eagle_eye_dialog.focus_force()
+                return
+
         if self.selected_shot_idx is None or not (0 <= self.selected_shot_idx < len(self.shots)):
             self.selected_shot_idx = 0
             self._select_tree_row(0)
             self.redraw_canvas()
 
-        if hasattr(self, "eagle_eye_dialog") and self.eagle_eye_dialog and self.eagle_eye_dialog.winfo_exists():
-            self.eagle_eye_dialog.set_shot_index(self.selected_shot_idx)
-            self.eagle_eye_dialog.lift()
-            self.eagle_eye_dialog.focus_force()
-        else:
-            self.eagle_eye_dialog = EagleEyeLoupe(self, self.selected_shot_idx)
+        self.eagle_eye_dialog = EagleEyeLoupe(self, self.selected_shot_idx)
 
     def on_canvas_left_drag(self, event):
         img_x, img_y = self.screen_to_img(event.x, event.y)
@@ -1273,9 +1338,7 @@ class AnnotationEditor(tk.Tk):
                 del self.shots[idx]
                 if not self.shots:
                     self.selected_shot_idx = None
-                    if hasattr(self, "eagle_eye_dialog") and self.eagle_eye_dialog and self.eagle_eye_dialog.winfo_exists():
-                        self.eagle_eye_dialog.destroy()
-                        self.eagle_eye_dialog = None
+                    self.close_eagle_eye()
                 else:
                     self.selected_shot_idx = min(idx, len(self.shots) - 1)
                     self._select_tree_row(self.selected_shot_idx)
@@ -1319,9 +1382,7 @@ class AnnotationEditor(tk.Tk):
             del self.shots[self.selected_shot_idx]
             if not self.shots:
                 self.selected_shot_idx = None
-                if hasattr(self, "eagle_eye_dialog") and self.eagle_eye_dialog and self.eagle_eye_dialog.winfo_exists():
-                    self.eagle_eye_dialog.destroy()
-                    self.eagle_eye_dialog = None
+                self.close_eagle_eye()
             else:
                 self.selected_shot_idx = min(self.selected_shot_idx, len(self.shots) - 1)
                 self._select_tree_row(self.selected_shot_idx)
@@ -1340,9 +1401,7 @@ class AnnotationEditor(tk.Tk):
             self.push_undo()
             self.shots.clear()
             self.selected_shot_idx = None
-            if hasattr(self, "eagle_eye_dialog") and self.eagle_eye_dialog and self.eagle_eye_dialog.winfo_exists():
-                self.eagle_eye_dialog.destroy()
-                self.eagle_eye_dialog = None
+            self.close_eagle_eye()
             self.recalculate_scores()
             self.redraw_canvas()
             self.lbl_status_msg.config(text=f"Removed all {shot_count} shots. Click canvas to add correct bullet holes.")
@@ -1361,8 +1420,12 @@ class AnnotationEditor(tk.Tk):
     def _select_tree_row(self, row_idx: int):
         children = self.tree_shots.get_children()
         if 0 <= row_idx < len(children):
-            self.tree_shots.selection_set(children[row_idx])
-            self.tree_shots.see(children[row_idx])
+            self._suppress_tree_events = True
+            try:
+                self.tree_shots.selection_set(children[row_idx])
+                self.tree_shots.see(children[row_idx])
+            finally:
+                self._suppress_tree_events = False
 
     # =========================================================================
     # Saving to JSON and Updating Review Card
