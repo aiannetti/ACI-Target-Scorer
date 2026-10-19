@@ -99,6 +99,13 @@ target-scorer autolabel \
   --redact-pii
 ```
 
+### Defense-in-Depth Spurious Peak Filtering:
+During auto-labeling, candidate detections pass through the [`filter_spurious_peaks`](file:///home/antho/target_scorer/src/target_scorer/metrology/peaks.py) pipeline to prevent false positives from contaminating your dataset:
+* **Border Filter:** Automatically excludes detections within $4\text{ mm}$ ($16\text{ px}$) of the canvas edge.
+* **Header & Official NRA Seal Exclusion:** Masks printed registration lines ($y < 65\text{ px}$) and the official NRA emblem in the lower-left margin ($x \in [50, 260], y \in [870, 1024]$).
+* **Ink Chroma & 1D Stroke Tests:** Prunes blue ballpoint pen ink ($\text{mean}(B-G) > 7.0$), red grading pen ink ($\text{mean}(R-B) > 25.0$), and elongated pen strokes with bounding box aspect ratios $> 2.2$.
+* **Physical Void Verification:** Confirms that candidate detections contain authentic optical depth (dark trap void, tan cardboard backer, or scanner white surrounded by a dark lead wipe grease ring).
+
 ### Generated Triplet per Target Card:
 For each photo `target_042.jpg`, the auto-labeler writes three files into `datasets/real_targets/`:
 1. **`target_042_canonical.png`**: Rectified $1024 \times 1024$ image ($4.0\text{ px/mm}$) ready for PyTorch data loaders.
@@ -198,6 +205,12 @@ target-scorer train \
   --initial-weights weights/target_scoring_hrnet_1024_best.pt \
   --checkpoint weights/target_scoring_hrnet_1024_hybrid.pt
 ```
+
+### C. Synthetic Training Data Diversity & Hard Negative Mining
+The synthetic generator package ([`src/target_scorer/synthetic/`](file:///home/antho/target_scorer/src/target_scorer/synthetic/)) provides realistic diversity to prevent domain shift:
+* **3-Tone Bullet Voids ([`holes.py`](file:///home/antho/target_scorer/src/target_scorer/synthetic/holes.py)):** Samples penetration backings across three balanced physical modes: 1/3 bright scanner white (document scanner lid), 1/3 dark range void (bullet trap shadow), and 1/3 tan/kraft corrugated cardboard backer board.
+* **4-Zone Stratified Shot Placement ([`holes.py`](file:///home/antho/target_scorer/src/target_scorer/synthetic/holes.py)):** Distributes bullet impacts across 4 zones: Zone 1 (40% inner aiming black), Zone 2 (20% outer scoring rings), Zone 3 (20% on-paper margin outside rings), and Zone 4 (20% off-paper border edge-clipping).
+* **Hard Negative Mining ([`markings.py`](file:///home/antho/target_scorer/src/target_scorer/synthetic/markings.py)):** Renders official NRA seals in the lower-left margin and authentic scorer handwriting featuring looped digits (`'8'`, `'0'`, `'9'`, `'6'`). The ground truth regression heatmap for all markings is strictly **0.0**, forcing the neural network to distinguish genuine lead wipe grease rings from pen loops and printed emblems.
 
 ---
 

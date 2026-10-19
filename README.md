@@ -17,6 +17,7 @@ For deep dives into workflows, algorithms, metrology grounding, and APIs, consul
 * 🔍 **[Interactive Annotation Editor & Eagle Eye Guide](file:///home/antho/target_scorer/docs/interactive_annotation_editor_guide.md):** Comprehensive walkthrough of the desktop GUI annotation editor: pan & zoom controls, ring overlays, the optical Eagle Eye Scoring Gauge, NRA Rule 14.3 inward breaks, caliber selection, and keyboard shortcuts.
 * 🎯 **[End-to-End Training & Workflow Tutorial](file:///home/antho/target_scorer/docs/end_to_end_training_and_workflow_tutorial.md):** Step-by-step operational guide from raw range smartphone photos to assisted auto-labeling, active learning verification, hybrid model training (Option A & B), and competitor PII privacy protection.
 * 🏗️ **[Technical Architecture & Developer Guide](file:///home/antho/target_scorer/docs/architecture_and_developer_guide.md):** System data flow diagrams (Mermaid / ASCII), physical metrology grounding, Harmonic 256-Grid Progressive Resizing, U-Net heatmap regression, Adaptive Wing Loss formulation, Fitzgibbon conic homography unwarping, 2D Taylor-series sub-pixel peak extraction, and `TargetAnnotation` schema.
+* 🏛️ **[Target Scoring System Context Document](file:///home/antho/target_scorer/docs/target_scoring_system_context_document.md):** High-level system context, project mission, historical development milestones, Sprint roadmaps (Sprints 1–11), and domain metrology specifications.
 
 ---
 
@@ -40,6 +41,14 @@ For deep dives into workflows, algorithms, metrology grounding, and APIs, consul
   * Automatic EXIF orientation normalization (tags 1–8) and Display P3 to standard sRGB color profile mapping.
 * **Camera Independence & Geometric Normalization:**
   * Auto-corrects perspective pitch and yaw tilt up to $\pm 45^\circ$, arbitrary aspect ratios, and card orientations via direct least-squares algebraic ellipse fitting (Fitzgibbon conic constraint) and closed-form homography unwarping.
+* **Defense-in-Depth Metrology Filtering:**
+  * Multi-stage geometric and chrominance filtering in [`peaks.py`](file:///home/antho/target_scorer/src/target_scorer/metrology/peaks.py) to eliminate spurious candidates.
+  * Combines ink chroma tests (rejection of blue/red ballpoint ink, colored felt markers, and graphite pencils), 1D pen stroke aspect ratio rejection ($\text{length} / \text{width} > 2.2$), physical bullet void confirmation (dark cavity + fiber tear margins), and official NRA seal/target header exclusion zones.
+* **Modularized Photorealistic Synthetic Generator Engine:**
+  * Decoupled architecture across [`canvas.py`](file:///home/antho/target_scorer/src/target_scorer/synthetic/canvas.py), [`holes.py`](file:///home/antho/target_scorer/src/target_scorer/synthetic/holes.py), [`markings.py`](file:///home/antho/target_scorer/src/target_scorer/synthetic/markings.py), and unified facade [`generator.py`](file:///home/antho/target_scorer/src/target_scorer/synthetic/generator.py).
+  * Implements **3-tone bullet void penetration** (white target paper, dark aperture cavity, and tan cardboard backer) simulating realistic range backstops.
+  * **4-zone stratified shot placement** (Zone 1: inner black 40%, Zone 2: outer scoring rings 20%, Zone 3: paper margins 20%, Zone 4: off-paper/clipped edges 20%).
+  * Procedural official NRA seal stamping and cursive handwriting generation for zero-heatmap hard negative mining.
 * **Competitor Privacy & PII Redaction:**
   * Automated margin redaction (`--redact-pii`) obliterates competitor registration handwriting, relay numbers, and names via circular boundary masking and aggressive Gaussian blurring.
 * **1-Click Google Colab CLI Cloud Orchestration:**
@@ -125,7 +134,8 @@ target_scorer/
 │   ├── cli_and_api_reference.md               # Complete CLI & Python API reference
 │   ├── interactive_annotation_editor_guide.md # Desktop GUI & Eagle Eye loupe guide
 │   ├── end_to_end_training_and_workflow_tutorial.md # Active learning & operational tutorial
-│   └── architecture_and_developer_guide.md    # Technical architecture & math specs
+│   ├── architecture_and_developer_guide.md    # Technical architecture & math specs
+│   └── target_scoring_system_context_document.md # High-level system context & sprint roadmap
 ├── src/
 │   └── target_scorer/
 │       ├── __init__.py           # Lazy loaders for clean imports
@@ -145,23 +155,29 @@ target_scorer/
 │       ├── gui/
 │       │   └── annotation_editor.py # Interactive GUI & Eagle Eye optical scoring loupe
 │       ├── metrology/
-│       │   ├── peaks.py          # 2D Taylor-series sub-pixel peak extraction
+│       │   ├── peaks.py          # 2D Taylor-series sub-pixel peak extraction & defense-in-depth filtering
 │       │   ├── scoring.py        # NRA B-2 / B-3 inward scoring & dispersion math
 │       │   └── visualization.py  # Diagnostic scorecard overlay & HUD generator
 │       ├── models/
 │       │   ├── unet.py           # Fully convolutional HighResHeatmapUNet architecture
 │       │   └── loss.py           # Adaptive Wing Loss implementation
 │       └── synthetic/
-│           ├── generator.py      # Photorealistic cardboard, bullet, & handwriting synthesis
+│           ├── __init__.py       # Submodule exports & facade integration
+│           ├── canvas.py         # Photorealistic cardboard textures & bullseye geometry
+│           ├── holes.py          # 3-tone bullet voids, ragged fiber tears, keyholes, & doubles
+│           ├── markings.py       # Official NRA seal, procedural handwriting, & hard negative mining
+│           ├── generator.py      # Facade orchestrator for synthetic target generation
 │           └── dataset.py        # Procedural PyTorch dataset with compression jitter
 ├── datasets/
 │   └── calibration_targets/      # Sample calibration targets with raw photos & ground truth JSON
 ├── tests/
 │   ├── test_progressive_training.py # Dynamic spatial resizing & progressive curriculum test suite
+│   ├── test_synthetic_holes.py   # Procedural holes, 3-tone voids, 4-zone placement & zero-heatmap markings
 │   ├── test_real_dataset.py      # Real dataset, schema, hybrid, and autolabel test suite
 │   ├── test_canonical_loader.py  # Format-independent ingestion & in-memory buffer test suite
-│   ├── test_low_res_metrology.py # Scoring compliance & metrology test suite
+│   ├── test_low_res_metrology.py # Scoring compliance & defense-in-depth metrology test suite
 │   ├── test_camera_angles.py     # Perspective rectification & tilt test suite
+│   ├── test_cli.py               # Unified CLI dispatcher & argument handling test suite
 │   └── test_benchmark_low_res.py # Procedural statistical regression benchmark
 ├── weights/
 │   ├── target_scoring_hrnet_1024_best.pt # Production competition model (0.335mm MRE)
@@ -217,11 +233,14 @@ python -c "import torch; print('CUDA Available:', torch.cuda.is_available(), '| 
 
 ## Automated Test Suite
 
-Run the full battery of 77 unit, progressive, and regression tests:
+Run the full battery of 103 unit, progressive, metrology, and regression tests:
 
 ```bash
-# Run complete test suite (77 tests):
+# Run complete test suite (103 tests):
 ./target_env/bin/python3 -m unittest discover tests/ -v
+
+# Run procedural holes, 3-tone voids, and zero-heatmap markings tests:
+./target_env/bin/python3 -m unittest tests/test_synthetic_holes.py -v
 
 # Run Progressive Resizing dynamic resolution tests:
 ./target_env/bin/python3 -m unittest tests/test_progressive_training.py -v
@@ -232,8 +251,11 @@ Run the full battery of 77 unit, progressive, and regression tests:
 # Run format-independent ingestion & in-memory buffer tests:
 ./target_env/bin/python3 -m unittest tests/test_canonical_loader.py -v
 
-# Run metrology and scoring assertions:
+# Run metrology, inward scoring, and defense-in-depth filtering assertions:
 ./target_env/bin/python3 -m unittest tests/test_low_res_metrology.py -v
+
+# Run unified CLI dispatcher tests:
+./target_env/bin/python3 -m unittest tests/test_cli.py -v
 
 # Run oblique camera angle tilt stress tests:
 ./target_env/bin/python3 -m unittest tests/test_camera_angles.py -v

@@ -450,3 +450,93 @@ shots, metrics = run_inference_and_scoring(
     output_path="edge_scorecard.png"
 )
 ```
+
+---
+
+### E. Modularized Synthetic Data Generation API (`target_scorer.synthetic`)
+
+```python
+from target_scorer.config import TargetConfig
+from target_scorer.synthetic.canvas import generate_cardboard_texture, draw_standard_bullseye
+from target_scorer.synthetic.holes import (
+    sample_bullet_void_bgr,
+    sample_shot_position,
+    stamp_bullet_hole,
+    stamp_double_shot,
+    stamp_keyhole_shot,
+)
+from target_scorer.synthetic.markings import (
+    render_official_nra_seal,
+    render_printed_target_header,
+    render_scorer_annotations,
+)
+from target_scorer.synthetic.generator import generate_synthetic_target_sample
+
+# Configure competition target
+cfg = TargetConfig(canvas_size=1024, pixels_per_mm=4.0, target_type="B-3")
+
+# Generate complete stratified sample
+image, heatmap, annotations, center, ring_radii = generate_synthetic_target_sample(
+    config=cfg,
+    num_singles=6,
+    num_doubles=1,
+    num_keyholes=1,
+)
+
+# Sample individual 3-tone void colors:
+# 'scanner_white', 'dark_void', 'tan_backer', or 'mixed' (1/3 each)
+void_color = sample_bullet_void_bgr(cfg)
+
+# Sample 4-zone stratified placement (inner black 40%, outer rings 20%, margins 20%, edge-clip 20%)
+shot_pos = sample_shot_position(center, ring_radii, cfg)
+```
+
+---
+
+### F. Defense-in-Depth Metrology Filtering API (`target_scorer.metrology.peaks`)
+
+```python
+from target_scorer.metrology.peaks import extract_subpixel_peaks, filter_spurious_peaks
+
+# 1. Extract raw continuous sub-pixel candidates via 2D Taylor series
+raw_peaks = extract_subpixel_peaks(
+    heatmap=bullet_heatmap,
+    threshold=0.40,
+    min_distance_px=10.0,
+    max_peaks=30,
+)
+
+# 2. Filter spurious margin handwriting, 1D pen strokes, and printed seal emblems
+verified_peaks = filter_spurious_peaks(
+    peaks=raw_peaks,
+    canonical_bgr=canonical_img,
+    canvas_size=1024,
+    pixels_per_mm=4.0,
+    target_type="B-3",
+    max_peaks=10,
+    filter_seal=True,
+    filter_header=True,
+    filter_handwriting=True,
+)
+```
+
+---
+
+### G. Diagnostic HUD & Channel Normalization (`target_scorer.metrology.visualization`)
+
+```python
+from target_scorer.metrology.visualization import render_scoring_inspection_overlay
+
+# Automatically handles (H, W) grayscale, (H, W, 3) BGR, and (H, W, 4) BGRA arrays
+scorecard_bgr = render_scoring_inspection_overlay(
+    image_bgr=canonical_image,  # 2D, 3D BGR, or 4D BGRA automatically converted
+    bullet_heatmap=bullet_heatmap,
+    shot_results=shot_results,
+    bullseye_center=bullseye_center,
+    metrics=metrics,
+    pixels_per_mm=4.0,
+    bullet_diameter_mm=5.69,
+    redact_pii=False,
+)
+```
+
