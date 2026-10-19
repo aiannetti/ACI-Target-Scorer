@@ -27,6 +27,8 @@ EXCLUDE_DIRS = {
     "weights",
     "visual_inspection_reports",
     "datasets",
+    "range_photos",
+    "autolabeled_photos",
 }
 
 EXCLUDE_EXTS = {
