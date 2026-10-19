@@ -137,19 +137,25 @@ class TestSyntheticHolesAndMarkings(unittest.TestCase):
 
     def test_nra_seal_and_handwriting_zero_ground_truth_heatmap(self):
         """Verifies procedural NRA seal and handwriting markings receive strict 0.0 ground truth heatmap."""
-        cfg = TargetConfig(canvas_size=1024, pixels_per_mm=4.0, include_nra_seal=True, include_scorer_marks=True)
+        # 1. Card with markings/seal only (0 shots) must have strictly 0.0 ground truth heatmap everywhere
+        cfg = TargetConfig(canvas_size=1024, pixels_per_mm=4.0, include_nra_seal=True, include_scorer_marks=True, include_header_text=True, include_handwriting=True)
+        _, zero_heatmap, zero_annos, _, _ = generate_synthetic_target_sample(cfg, num_singles=0, num_doubles=0, num_keyholes=0)
+        self.assertEqual(len(zero_annos), 0)
+        self.assertEqual(float(zero_heatmap.max()), 0.0, "Markings and NRA seal must have 0.0 ground truth heatmap everywhere")
+
+        # 2. Card with shots: Verify seal and margin remain 0.0 when no shots are within 20px (accounting for 4-sigma Gaussian tails)
         canvas, heatmap, annotations, bc, rings = generate_synthetic_target_sample(cfg, num_singles=3, num_doubles=0, num_keyholes=0)
 
-        # Lower-left margin NRA seal region (x: 60..240, y: 880..1024)
+        # Lower-left margin NRA seal region (x: 60..240, y: 880..1024) with 20px Gaussian buffer
         seal_hmap = heatmap[880:1024, 60:240]
-        shots_in_seal = [a for a in annotations if 60 <= a.center_x <= 240 and 880 <= a.center_y <= 1024]
-        if not shots_in_seal:
+        shots_near_seal = [a for a in annotations if (60 - 20) <= a.center_x <= (240 + 20) and (880 - 20) <= a.center_y <= 1024]
+        if not shots_near_seal:
             self.assertEqual(float(seal_hmap.max()), 0.0, "NRA seal must have 0.0 ground truth heatmap for negative hard mining")
 
-        # Upper margin header & written score region (x: 550..850, y: 20..200)
+        # Upper margin header & written score region (x: 550..850, y: 20..200) with 20px Gaussian buffer
         margin_hmap = heatmap[20:200, 550:850]
-        shots_in_margin = [a for a in annotations if 550 <= a.center_x <= 850 and 20 <= a.center_y <= 200]
-        if not shots_in_margin:
+        shots_near_margin = [a for a in annotations if (550 - 20) <= a.center_x <= (850 + 20) and 0 <= a.center_y <= (200 + 20)]
+        if not shots_near_margin:
             self.assertEqual(float(margin_hmap.max()), 0.0, "Scorer tally area must have 0.0 ground truth heatmap")
 
     def test_filter_spurious_peaks_rejection(self):
