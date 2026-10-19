@@ -30,6 +30,10 @@ def render_scoring_inspection_overlay(
         rings_cfg = TargetRingsConfig()
 
     canvas = image_bgr.copy()
+    if canvas.ndim == 2:
+        canvas = cv2.cvtColor(canvas, cv2.COLOR_GRAY2BGR)
+    elif canvas.ndim == 3 and canvas.shape[2] == 4:
+        canvas = cv2.cvtColor(canvas, cv2.COLOR_BGRA2BGR)
     h, w, _ = canvas.shape
     bull_x, bull_y = int(round(bullseye_center[0])), int(round(bullseye_center[1]))
     bullet_radius_px = max(1, int(round((bullet_diameter_mm / 2.0) * pixels_per_mm)))

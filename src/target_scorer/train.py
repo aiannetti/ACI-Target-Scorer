@@ -606,6 +606,11 @@ def run_progressive_training(
 
         print(f"[✓] Stage {stage_idx} ({sz}x{sz}) complete. Best MRE: {best_stage_mre:.3f} mm | Match: {best_stage_match:.1f}%", flush=True)
 
+        # Clean up stage DataLoaders and flush GPU VRAM cache
+        del train_loader, val_loader, train_dataset, val_dataset
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
     print("\n" + "=" * 76)
     print(f"[✓] Progressive Resizing Curriculum Complete across all {len(stages)} stages.")
     print(f"[✓] Production Weights: {checkpoint_path}")

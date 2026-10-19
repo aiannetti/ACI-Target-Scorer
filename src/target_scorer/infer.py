@@ -120,8 +120,7 @@ def run_inference_and_scoring(
         if os.path.exists(alt_path):
             resolved_ckpt = alt_path
         else:
-            print(f"[-] Checkpoint '{checkpoint_path}' not found! Run training first or specify path.")
-            sys.exit(1)
+            raise FileNotFoundError(f"Checkpoint '{checkpoint_path}' not found! Run training first or specify path.")
 
     try:
         checkpoint = torch.load(resolved_ckpt, map_location=device, weights_only=False)
@@ -311,20 +310,24 @@ def main():
 
     args = parser.parse_args()
 
-    run_inference_and_scoring(
-        checkpoint_path=args.checkpoint,
-        image_path=args.image,
-        output_path=args.output,
-        debug_rect_path=args.debug_rect,
-        target_type=args.target,
-        distance_yards=args.distance,
-        peak_threshold=args.threshold,
-        max_shots=args.shots,
-        device_str=args.device,
-        canvas_size=args.canvas_size,
-        pixels_per_mm=args.scale,
-        redact_pii=args.redact_pii,
-    )
+    try:
+        run_inference_and_scoring(
+            checkpoint_path=args.checkpoint,
+            image_path=args.image,
+            output_path=args.output,
+            debug_rect_path=args.debug_rect,
+            target_type=args.target,
+            distance_yards=args.distance,
+            peak_threshold=args.threshold,
+            max_shots=args.shots,
+            device_str=args.device,
+            canvas_size=args.canvas_size,
+            pixels_per_mm=args.scale,
+            redact_pii=args.redact_pii,
+        )
+    except FileNotFoundError as e:
+        print(f"[-] {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

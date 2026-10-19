@@ -66,9 +66,19 @@ def score_target_group(
     if rings_cfg is None:
         rings_cfg = TargetRingsConfig()
 
+    if bullet_diameter_mm <= 0 or not math.isfinite(bullet_diameter_mm):
+        raise ValueError(f"bullet_diameter_mm must be positive and finite, got {bullet_diameter_mm}")
+
     bullet_radius_mm = bullet_diameter_mm / 2.0
     rings_table = rings_cfg.get_rings_table()
     bull_x, bull_y = bullseye_peak
+
+    if not (math.isfinite(bull_x) and math.isfinite(bull_y)):
+        raise ValueError(f"Bullseye peak coordinates must be finite, got ({bull_x}, {bull_y})")
+
+    for sx, sy, conf in shot_peaks:
+        if not (math.isfinite(sx) and math.isfinite(sy) and math.isfinite(conf)):
+            raise ValueError(f"Shot peak coordinates must be finite, got ({sx}, {sy}, {conf})")
 
     shot_results: List[ShotResult] = []
 

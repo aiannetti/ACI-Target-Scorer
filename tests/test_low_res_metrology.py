@@ -532,5 +532,149 @@ class TestTextAndHandwritingInvariance(unittest.TestCase):
         self.assertEqual(overlay_redacted.shape, (256, 256 + 390, 3))
 
 
+class TestMetrologyEdgeCasesAndOpticalVerification(unittest.TestCase):
+    """Verifies edge cases in scoring input validation, channel conversion, and optical void verification."""
+
+    def test_scoring_nan_and_inf_validation(self):
+        """Verifies score_target_group rejects NaN/Inf bullseye or shot coordinates."""
+        rings_cfg = TargetRingsConfig()
+
+        # NaN in bullseye peak
+        with self.assertRaises(ValueError):
+            score_target_group(
+                shot_peaks=[(128.0, 128.0, 0.9)],
+                bullseye_peak=(float("nan"), 128.0),
+                pixels_per_mm=2.0,
+                rings_cfg=rings_cfg
+            )
+
+        # Inf in bullseye peak
+        with self.assertRaises(ValueError):
+            score_target_group(
+                shot_peaks=[(128.0, 128.0, 0.9)],
+                bullseye_peak=(128.0, float("inf")),
+                pixels_per_mm=2.0,
+                rings_cfg=rings_cfg
+            )
+
+        # NaN in shot peak coordinates
+        with self.assertRaises(ValueError):
+            score_target_group(
+                shot_peaks=[(float("nan"), 128.0, 0.9)],
+                bullseye_peak=(128.0, 128.0),
+                pixels_per_mm=2.0,
+                rings_cfg=rings_cfg
+            )
+
+        # Invalid bullet diameter
+        with self.assertRaises(ValueError):
+            score_target_group(
+                shot_peaks=[(128.0, 128.0, 0.9)],
+                bullseye_peak=(128.0, 128.0),
+                bullet_diameter_mm=-5.69,
+                pixels_per_mm=2.0,
+                rings_cfg=rings_cfg
+            )
+
+    def test_visualization_grayscale_and_bgra_resilience(self):
+        """Verifies render_scoring_inspection_overlay safely auto-converts 2D and 4-channel canvases."""
+        rings_cfg = TargetRingsConfig()
+        hmap = np.zeros((256, 256), dtype=np.float32)
+        shot_results, metrics = score_target_group(
+            shot_peaks=[(128.0, 128.0, 0.95)],
+            bullseye_peak=(128.0, 128.0),
+            pixels_per_mm=2.0,
+            rings_cfg=rings_cfg
+        )
+
+        # 1. 2D grayscale canvas
+        gray_canvas = np.ones((256, 256), dtype=np.uint8) * 200
+        out_gray = render_scoring_inspection_overlay(
+            image_bgr=gray_canvas,
+            bullet_heatmap=hmap,
+            shot_results=shot_results,
+            bullseye_center=(128.0, 128.0),
+            metrics=metrics,
+            pixels_per_mm=2.0,
+            rings_cfg=rings_cfg
+        )
+        self.assertEqual(out_gray.ndim, 3)
+        self.assertEqual(out_gray.shape, (256, 256 + 390, 3))
+
+        # 2. 4-channel BGRA canvas
+        bgra_canvas = np.ones((256, 256, 4), dtype=np.uint8) * 200
+        out_bgra = render_scoring_inspection_overlay(
+            image_bgr=bgra_canvas,
+            bullet_heatmap=hmap,
+            shot_results=shot_results,
+            bullseye_center=(128.0, 128.0),
+            metrics=metrics,
+            pixels_per_mm=2.0,
+            rings_cfg=rings_cfg
+        )
+        self.assertEqual(out_bgra.ndim, 3)
+        self.assertEqual(out_bgra.shape, (256, 256 + 390, 3))
+
+    def test_infer_missing_checkpoint_raises_filenotfound(self):
+        """Verifies run_inference_and_scoring raises FileNotFoundError for missing weights."""
+        with self.assertRaises(FileNotFoundError):
+            run_inference_and_scoring(checkpoint_path="/nonexistent/weights_12345.pt")
+
+    def test_optical_void_verification_heuristics(self):
+        """Verifies is_spurious_margin_marking discriminates authentic voids from pen strokes and blank lines."""
+        from target_scorer.metrology.peaks import is_spurious_margin_marking
+
+        canvas_size = 256
+        pixels_per_mm = 4.0
+
+        # Base paper canvas (cream cardboard BGR: 145, 180, 215)
+        base = np.ones((canvas_size, canvas_size, 3), dtype=np.uint8) * np.array([145, 180, 215], dtype=np.uint8)
+
+        # 1. Blank paper margin: Should be classified as spurious (no bullet void)
+        is_sp = is_spurious_margin_marking(100.0, 100.0, base, pixels_per_mm)
+        self.assertTrue(is_sp, "Blank paper must be classified as spurious")
+
+        # 2. Blue ballpoint pen stroke: Blue ink has B noticeable excess over G
+        img_blue = base.copy()
+        # Draw blue pen numeral / stroke at (100, 100) (BGR: 180, 50, 40)
+        cv2.putText(img_blue, "83", (85, 105), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (180, 50, 40), 2)
+        is_sp = is_spurious_margin_marking(100.0, 100.0, img_blue, pixels_per_mm)
+        self.assertTrue(is_sp, "Blue ballpoint pen stroke must be classified as spurious")
+
+        # 3. Red grading pen stroke: Red ink has R >> B and R >> G
+        img_red = base.copy()
+        cv2.putText(img_red, "X", (90, 105), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (30, 30, 210), 2)
+        is_sp = is_spurious_margin_marking(100.0, 100.0, img_red, pixels_per_mm)
+        self.assertTrue(is_sp, "Red grading pen stroke must be classified as spurious")
+
+        # 4. Thin 1D stroke line (e.g. printed table grid or underscore, aspect ratio > 2.5)
+        img_line = base.copy()
+        cv2.line(img_line, (98, 70), (98, 130), (30, 30, 35), 2)
+        is_sp = is_spurious_margin_marking(98.0, 100.0, img_line, pixels_per_mm)
+        self.assertTrue(is_sp, "Elongated 1D line stroke must be classified as spurious")
+
+        # 5. Authentic circular dark void: Should be preserved (NOT spurious)
+        img_dark_void = base.copy()
+        cv2.circle(img_dark_void, (100, 100), int(round(2.8 * pixels_per_mm)), (25, 25, 30), -1)
+        is_sp = is_spurious_margin_marking(100.0, 100.0, img_dark_void, pixels_per_mm)
+        self.assertFalse(is_sp, "Authentic circular dark bullet void must NOT be spurious")
+
+        # 6. Authentic scanner-white void with dark lead wipe grease ring: Should be preserved
+        img_white_void = base.copy()
+        r_hole = int(round(2.6 * pixels_per_mm))
+        # Draw white punch-through center
+        cv2.circle(img_white_void, (100, 100), r_hole, (255, 255, 255), -1)
+        # Draw dark lead wipe perimeter ring
+        cv2.circle(img_white_void, (100, 100), r_hole + 1, (30, 30, 35), 2)
+        is_sp = is_spurious_margin_marking(100.0, 100.0, img_white_void, pixels_per_mm)
+        self.assertFalse(is_sp, "Authentic scanner-white void with grease ring must NOT be spurious")
+
+        # 7. White patch without lead wipe grease ring: Should be rejected
+        img_white_no_ring = base.copy()
+        cv2.circle(img_white_no_ring, (100, 100), r_hole, (255, 255, 255), -1)
+        is_sp = is_spurious_margin_marking(100.0, 100.0, img_white_no_ring, pixels_per_mm)
+        self.assertTrue(is_sp, "White patch without grease ring must be classified as spurious")
+
+
 if __name__ == "__main__":
     unittest.main()
