@@ -10,7 +10,7 @@ from target_scorer.config import (
 )
 from target_scorer.geometry.canonical_loader import ImageCanonicalizer, canonicalize_image
 from target_scorer.geometry.rectifier import RectificationResult, TargetRectifier
-from target_scorer.metrology.peaks import extract_subpixel_peaks
+from target_scorer.metrology.peaks import extract_subpixel_peaks, filter_spurious_peaks
 from target_scorer.metrology.scoring import (
     GroupMetrics,
     ShotResult,
@@ -69,6 +69,7 @@ __all__ = [
     "ConvBlock",
     "AdaptiveWingLoss",
     "extract_subpixel_peaks",
+    "filter_spurious_peaks",
     "score_target_group",
     "calculate_moa",
     "render_scoring_inspection_overlay",

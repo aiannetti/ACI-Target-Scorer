@@ -18,7 +18,7 @@ from target_scorer.config import TargetRingsConfig
 from target_scorer.data.schema import AnnotatedShot, TargetAnnotation
 from target_scorer.geometry.canonical_loader import canonicalize_image
 from target_scorer.geometry.rectifier import TargetRectifier
-from target_scorer.metrology.peaks import extract_subpixel_peaks
+from target_scorer.metrology.peaks import extract_subpixel_peaks, filter_spurious_peaks
 from target_scorer.metrology.scoring import score_target_group
 from target_scorer.models.unet import HighResHeatmapUNet
 
@@ -105,12 +105,22 @@ def autolabel_target_image(
     bullet_hmap = pred_hmap[0]
     bull_hmap = pred_hmap[1]
 
-    # Extract bullet coordinates
+    # Extract candidate bullet coordinates (using generous candidate pool)
     min_dist_px = max(6.0, 2.5 * pixels_per_mm)
-    detected_peaks = extract_subpixel_peaks(
+    candidate_peaks = extract_subpixel_peaks(
         bullet_hmap,
         threshold=peak_threshold,
         min_distance_px=min_dist_px,
+        max_peaks=max(30, max_shots * 3) if max_shots is not None else None
+    )
+
+    # Filter spurious printed target artifacts (official NRA seal, header text)
+    detected_peaks = filter_spurious_peaks(
+        peaks=candidate_peaks,
+        canonical_bgr=canonical_bgr,
+        canvas_size=canvas_size,
+        pixels_per_mm=pixels_per_mm,
+        target_type=target_type,
         max_peaks=max_shots
     )
 

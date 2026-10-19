@@ -16,7 +16,7 @@ import torch
 
 from target_scorer.config import TargetConfig, TargetRingsConfig, TrainConfig
 from target_scorer.geometry.rectifier import RectificationResult, TargetRectifier
-from target_scorer.metrology.peaks import extract_subpixel_peaks
+from target_scorer.metrology.peaks import extract_subpixel_peaks, filter_spurious_peaks
 from target_scorer.metrology.scoring import GroupMetrics, ShotResult, score_target_group
 from target_scorer.metrology.visualization import render_scoring_inspection_overlay
 from target_scorer.models.unet import HighResHeatmapUNet
@@ -214,10 +214,18 @@ def run_inference_and_scoring(
     bullseye_heatmap[~central_mask] = 0.0
 
     min_dist_px = max(6.0, (bullet_diameter_mm * 0.45) * eff_pixels_per_mm)
-    shot_peaks = extract_subpixel_peaks(
+    candidate_peaks = extract_subpixel_peaks(
         bullet_heatmap,
         threshold=peak_threshold,
         min_distance_px=min_dist_px,
+        max_peaks=max(30, max_shots * 3) if max_shots is not None else None
+    )
+    shot_peaks = filter_spurious_peaks(
+        peaks=candidate_peaks,
+        canonical_bgr=img_canonical,
+        canvas_size=eff_canvas_size,
+        pixels_per_mm=eff_pixels_per_mm,
+        target_type=target_type,
         max_peaks=max_shots
     )
     bull_peaks = extract_subpixel_peaks(

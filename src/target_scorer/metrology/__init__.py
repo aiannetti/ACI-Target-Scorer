@@ -2,7 +2,7 @@
 Metrology, sub-pixel coordinate extraction, NRA inward scoring, and scorecard rendering.
 """
 
-from target_scorer.metrology.peaks import extract_subpixel_peaks
+from target_scorer.metrology.peaks import extract_subpixel_peaks, filter_spurious_peaks
 from target_scorer.metrology.scoring import (
     GroupMetrics,
     ShotResult,
@@ -13,6 +13,7 @@ from target_scorer.metrology.visualization import render_scoring_inspection_over
 
 __all__ = [
     "extract_subpixel_peaks",
+    "filter_spurious_peaks",
     "ShotResult",
     "GroupMetrics",
     "calculate_moa",

@@ -22,6 +22,7 @@ class TargetConfig:
     include_handwriting: bool = True     # Simulate competitor handwriting (name, NRA#, relay)
     include_header_text: bool = True     # Simulate official printed NRA target headers
     include_scorer_marks: bool = True    # Simulate scorer circled shots, numbers & checkmarks
+    include_nra_seal: bool = True        # Simulate authentic official printed circular NRA seal in lower margin
     void_color_mode: str = "mixed"       # "mixed" (45% scanner white, 35% dark, 20% tan), "scanner_white", "dark_void", "tan_backer"
 
 

@@ -135,6 +135,56 @@ class TestSyntheticHolesAndMarkings(unittest.TestCase):
         img, (cx, cy) = generate_synthetic_demo_target(canvas_size=1024, pixels_per_mm=4.0, target_type="B-2")
         self.assertEqual(img.shape, (1024, 1024, 3))
 
+    def test_nra_seal_and_handwriting_zero_ground_truth_heatmap(self):
+        """Verifies procedural NRA seal and handwriting markings receive strict 0.0 ground truth heatmap."""
+        cfg = TargetConfig(canvas_size=1024, pixels_per_mm=4.0, include_nra_seal=True, include_scorer_marks=True)
+        canvas, heatmap, annotations, bc, rings = generate_synthetic_target_sample(cfg, num_singles=3, num_doubles=0, num_keyholes=0)
+
+        # Lower-left margin NRA seal region (x: 60..240, y: 880..1024)
+        seal_hmap = heatmap[880:1024, 60:240]
+        shots_in_seal = [a for a in annotations if 60 <= a.center_x <= 240 and 880 <= a.center_y <= 1024]
+        if not shots_in_seal:
+            self.assertEqual(float(seal_hmap.max()), 0.0, "NRA seal must have 0.0 ground truth heatmap for negative hard mining")
+
+        # Upper margin header & written score region (x: 550..850, y: 20..200)
+        margin_hmap = heatmap[20:200, 550:850]
+        shots_in_margin = [a for a in annotations if 550 <= a.center_x <= 850 and 20 <= a.center_y <= 200]
+        if not shots_in_margin:
+            self.assertEqual(float(margin_hmap.max()), 0.0, "Scorer tally area must have 0.0 ground truth heatmap")
+
+    def test_filter_spurious_peaks_rejection(self):
+        """Verifies filter_spurious_peaks suppresses seal and header artifacts while preserving real shots."""
+        from target_scorer.metrology.peaks import filter_spurious_peaks
+
+        mock_peaks = [
+            (512.0, 512.0, 0.95),   # Bullseye center hit
+            (480.0, 530.0, 0.88),   # 10 ring hit
+            (155.0, 970.0, 0.65),   # Spurious NRA seal peak
+            (140.0, 990.0, 0.58),   # Spurious NRA seal peak #2
+            (500.0, 25.0, 0.52),    # Spurious header text peak
+            (380.0, 550.0, 0.75),   # Outer ring hit
+        ]
+
+        # Filter spurious peaks
+        cleaned = filter_spurious_peaks(
+            peaks=mock_peaks,
+            canonical_bgr=None,
+            canvas_size=1024,
+            pixels_per_mm=4.0,
+            target_type="B-2",
+            max_peaks=10
+        )
+
+        cleaned_coords = [(round(p[0]), round(p[1])) for p in cleaned]
+        # Real ring shots preserved
+        self.assertIn((512, 512), cleaned_coords)
+        self.assertIn((480, 530), cleaned_coords)
+        self.assertIn((380, 550), cleaned_coords)
+        # Seal and header false positives rejected
+        self.assertNotIn((155, 970), cleaned_coords)
+        self.assertNotIn((140, 990), cleaned_coords)
+        self.assertNotIn((500, 25), cleaned_coords)
+
 
 if __name__ == "__main__":
     unittest.main()
