@@ -94,40 +94,86 @@ def extract_subpixel_peaks(
     return subpixel_points
 
 
-def is_handwriting_pen_stroke(
+def is_spurious_margin_marking(
     px: float,
     py: float,
     canonical_bgr: np.ndarray,
     pixels_per_mm: float = 4.0
 ) -> bool:
-    """Checks if a candidate peak in margins is colored ballpoint pen or grading ink."""
+    """
+    Checks if a candidate peak in margins or outer regions is a spurious marking:
+      - Colored ballpoint pen or grading ink (blue, violet, red)
+      - Thin 1D stroke lines / checkmarks / underscores (aspect ratio > 2.2)
+      - Blank paper / printed scoring ring line without authentic bullet penetration void
+      - Preserves genuine 2D circular bullet hole penetration voids (dark, tan, or scanner-white).
+    """
     h, w = canonical_bgr.shape[:2]
-    r_check = int(round(3.0 * pixels_per_mm))
+    border_px = int(round(4.0 * pixels_per_mm))
+    if px < border_px or px > w - border_px or py < border_px or py > h - border_px:
+        return True
+
+    r_check = int(round(3.5 * pixels_per_mm))
     ix, iy = int(round(px)), int(round(py))
     if iy - r_check < 0 or iy + r_check >= h or ix - r_check < 0 or ix + r_check >= w:
-        return False
+        return True
 
     patch = canonical_bgr[iy - r_check:iy + r_check + 1, ix - r_check:ix + r_check + 1]
+    gray = cv2.cvtColor(patch, cv2.COLOR_BGR2GRAY)
+    paper_median = float(np.median(gray))
+
+    # Inside solid black bullseye, preserve candidate peaks
+    if paper_median < 90:
+        return False
+
     b = patch[:, :, 0].astype(float)
     g = patch[:, :, 1].astype(float)
     r = patch[:, :, 2].astype(float)
 
-    # Ballpoint blue / violet ink test:
-    # Target cardstock has R > G > B. Blue ink has B noticeably higher than G.
-    gray = cv2.cvtColor(patch, cv2.COLOR_BGR2GRAY)
+    # 1. Ballpoint blue / violet or red ink test
     ink_mask = gray < 165
     if np.sum(ink_mask) >= 15:
         ink_b = b[ink_mask]
         ink_g = g[ink_mask]
         ink_r = r[ink_mask]
-        if np.mean(ink_b - ink_g) > 8.0:
+        if np.mean(ink_b - ink_g) > 7.0:
             return True  # Blue / purple ballpoint ink handwriting
-
-        # Red grading pen test:
         if np.mean(ink_r - ink_b) > 25.0 and np.mean(ink_r - ink_g) > 20.0:
             return True  # Red grading pen handwriting
 
-    return False
+    # 2. Check for authentic bullet hole penetration void
+    cy_p, cx_p = patch.shape[0] // 2, patch.shape[1] // 2
+    center_disk = gray[max(0, cy_p - 3):min(patch.shape[0], cy_p + 4), max(0, cx_p - 3):min(patch.shape[1], cx_p + 4)]
+    c_mean = float(center_disk.mean())
+    c_min = int(center_disk.min())
+
+    # 2a. Authentic dark void or tan backer void (center significantly darker than paper)
+    if c_mean < paper_median - 25 or c_min < paper_median - 45:
+        dark_mask = (gray < (paper_median - 25)).astype(np.uint8)
+        contours, _ = cv2.findContours(dark_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        for cnt in contours:
+            area = cv2.contourArea(cnt)
+            if area >= 12:
+                bx_c, by_c, bw, bh = cv2.boundingRect(cnt)
+                aspect = max(bw, bh) / max(1, min(bw, bh))
+                if aspect > 2.2:
+                    return True  # Elongated 1D stroke / text line
+        return False  # Genuine circular dark bullet void!
+
+    # 2b. Authentic scanner white void with grease ring
+    if c_mean > paper_median + 4:
+        r_lead = 2.6 * pixels_per_mm
+        angles = np.linspace(0, 2 * np.pi, 16, endpoint=False)
+        perim_samples = [gray[int(round(cy_p + r_lead * np.sin(a))), int(round(cx_p + r_lead * np.cos(a)))]
+                         for a in angles if 0 <= cy_p + r_lead * np.sin(a) < patch.shape[0] and 0 <= cx_p + r_lead * np.cos(a) < patch.shape[1]]
+        if perim_samples and min(perim_samples) < paper_median - 25 and np.mean(perim_samples) < paper_median - 8:
+            return False  # Authentic scanner white bullet hole!
+        return True  # White patch lacking bullet grease ring
+
+    # 2c. Untouched blank paper / faint printed ring line
+    return True
+
+
+is_handwriting_pen_stroke = is_spurious_margin_marking
 
 
 def filter_spurious_peaks(
@@ -143,22 +189,28 @@ def filter_spurious_peaks(
 ) -> List[Tuple[float, float, float]]:
     """
     Filters spurious false-positive detections occurring on printed target artifacts:
-      1. Official NRA seal / emblem printed in lower-left margin (x: 50..260, y: 870..1024).
-      2. Top header registration / title text (y < 42).
-      3. Scorer handwritten score numerals in margins (ballpoint pen ink).
-      4. Verifies true bullet hole radial void properties if canonical_bgr is provided.
+      1. Extreme canvas borders (within 4mm / 16px of canvas edge).
+      2. Official NRA seal / emblem printed in lower-left margin (x: 50..260, y: 870..1024).
+      3. Top header registration / title text (y < 65).
+      4. Scorer handwritten score numerals in margins (ballpoint pen ink).
+      5. Blank paper / printed scoring ring line peaks lacking physical bullet void penetration.
     Returns cleaned list of peaks sorted by confidence, limited to max_peaks if specified.
     """
     if not peaks:
         return []
 
     sf = canvas_size / 1024.0
+    border_px = 4.0 * pixels_per_mm
     seal_x0, seal_x1 = 50.0 * sf, 260.0 * sf
     seal_y0, seal_y1 = 870.0 * sf, float(canvas_size)
-    header_y = 42.0 * sf
+    header_y = 65.0 * sf
 
     cleaned: List[Tuple[float, float, float]] = []
     for px, py, conf in peaks:
+        # 0. Extreme canvas boundary exclusion
+        if px < border_px or px > canvas_size - border_px or py < border_px or py > canvas_size - border_px:
+            continue
+
         # 1. Top printed header exclusion
         if filter_header and py < header_y and conf < 0.90:
             continue
@@ -178,14 +230,14 @@ def filter_spurious_peaks(
                 if conf < 0.90:
                     continue
 
-        # 3. Margin handwriting exclusion (upper-right score tally or outer margin)
+        # 3. Margin handwriting and void verification exclusion
         if filter_handwriting and canonical_bgr is not None:
             dx = px - (canvas_size / 2.0)
             dy = py - (canvas_size / 2.0)
             dist_center = math.hypot(dx, dy)
             outer_margin_px = 350.0 * sf
-            if (dist_center > outer_margin_px or (py < 250.0 * sf and px > 520.0 * sf)):
-                if is_handwriting_pen_stroke(px, py, canonical_bgr, pixels_per_mm):
+            if (dist_center > outer_margin_px or (py < 250.0 * sf and px > 520.0 * sf) or py < 120.0 * sf):
+                if is_spurious_margin_marking(px, py, canonical_bgr, pixels_per_mm):
                     continue
 
         cleaned.append((px, py, conf))
