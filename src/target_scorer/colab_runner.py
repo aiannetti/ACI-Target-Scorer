@@ -315,6 +315,249 @@ def run_colab_training(
     return checkpoint_dest
 
 
+def run_colab_progressive_training(
+    gpu: str = "A100",
+    high_mem: bool = False,
+    session_name: Optional[str] = None,
+    stages_str: Optional[str] = None,
+    checkpoint_dir: str = "weights",
+    scorecards_dir: str = "visual_inspection_reports",
+    initial_weights: Optional[str] = None,
+    real_data_dir: Optional[str] = None,
+    real_ratio: float = 0.35,
+    timeout_seconds: float = 3600.0,
+) -> str:
+    """
+    End-to-end Progressive Resizing cloud training orchestration on Google Colab CLI:
+      1. Provisions a single cloud GPU VM (NVIDIA A100 or T4).
+      2. Uploads codebase bundle and optional real dataset / initial weights once.
+      3. Executes the 4-stage Harmonic 256-Grid curriculum (256 -> 512 -> 768 -> 1024).
+      4. Generates multi-resolution diagnostic scorecards for all 4 stages.
+      5. Downloads all 4 stage checkpoints and scorecards in one batch.
+      6. Automatically terminates the Colab VM to conserve compute units.
+    """
+    colab_bin = get_colab_bin()
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+    if session_name is None:
+        try:
+            out_sess = subprocess.check_output([colab_bin, "sessions"], text=True)
+            for line in out_sess.splitlines():
+                if "target-progressive-" in line:
+                    cand = line.split("]")[0].replace("[", "").strip()
+                    if cand:
+                        session_name = cand
+                        print(f"[*] Discovered existing active Colab session '{session_name}'.")
+                        break
+        except Exception:
+            pass
+
+    if session_name is None:
+        session_name = f"target-progressive-{int(time.time()) % 100000:05d}"
+
+    local_ckpt_dir = os.path.join(project_root, checkpoint_dir)
+    local_scorecard_dir = os.path.join(project_root, scorecards_dir)
+    os.makedirs(local_ckpt_dir, exist_ok=True)
+    os.makedirs(local_scorecard_dir, exist_ok=True)
+
+    print("=" * 72)
+    print("  GOOGLE COLAB PROGRESSIVE RESIZING CLOUD ORCHESTRATION")
+    print("  Curriculum Schedule: 256 -> 512 -> 768 -> 1024 px (Harmonic 256-Grid)")
+    print(f"  Target Accelerator:  NVIDIA {gpu} {'(High-RAM)' if high_mem else ''}")
+    print(f"  Colab Session Name:  {session_name}")
+    print(f"  Local Weights Dir:   {local_ckpt_dir}")
+    print(f"  Local Reports Dir:   {local_scorecard_dir}")
+    if real_data_dir:
+        print(f"  Real Target Dataset: {real_data_dir} (Ratio: {real_ratio:.2f})")
+    check_colab_usage(colab_bin)
+    print("=" * 72)
+
+    # 1. Repackage latest codebase bundle
+    print("[1/7] Packaging latest codebase bundle...")
+    bundle_script = os.path.join(project_root, "scripts", "create_colab_bundle.py")
+    bundle_zip = os.path.join(project_root, "target_scorer_colab_bundle.zip")
+    if os.path.exists(bundle_script):
+        subprocess.run([sys.executable, bundle_script], cwd=project_root, check=True)
+    elif not os.path.exists(bundle_zip):
+        raise FileNotFoundError(f"Colab bundle '{bundle_zip}' not found and packaging script missing.")
+
+    session_created = False
+    try:
+        # 2. Check if session already exists or provision new cloud GPU VM
+        try:
+            out_sess = subprocess.check_output([colab_bin, "sessions"], text=True)
+            if session_name in out_sess:
+                print(f"[*] Reusing existing active Colab session '{session_name}'...")
+                session_created = True
+        except Exception:
+            pass
+
+        if not session_created:
+            print(f"[2/7] Provisioning Colab VM session '{session_name}' with {gpu} accelerator...")
+            cmd_new = [colab_bin, "new", "-s", session_name, "--gpu", gpu]
+            if high_mem:
+                cmd_new.append("--high-mem")
+            res_new = subprocess.run(cmd_new)
+            if res_new.returncode != 0:
+                raise RuntimeError(f"Failed to allocate Colab session '{session_name}' with GPU {gpu}.")
+            session_created = True
+
+        session_url = get_session_url(colab_bin, session_name)
+        if session_url:
+            print(f"[+] Live Colab Session URL: {session_url}")
+
+        # 3. Upload bundle and extra assets
+        print(f"[3/7] Uploading codebase bundle to Colab VM session '{session_name}'...")
+        cmd_up = [colab_bin, "upload", bundle_zip, "/content/target_scorer_colab_bundle.zip", "-s", session_name]
+        subprocess.run(cmd_up, check=True)
+        print("[✓] Bundle uploaded successfully.")
+
+        if initial_weights and os.path.exists(initial_weights):
+            print(f"[+] Uploading initial weights '{initial_weights}'...")
+            cmd_up_w = [colab_bin, "upload", initial_weights, "/content/initial_weights.pt", "-s", session_name]
+            subprocess.run(cmd_up_w, check=True)
+            print("[✓] Initial weights uploaded.")
+
+        if real_data_dir and os.path.exists(real_data_dir):
+            print(f"[+] Archiving and uploading real target dataset '{real_data_dir}'...")
+            real_data_zip = os.path.join(project_root, "real_dataset_upload.zip")
+            shutil.make_archive(real_data_zip.replace(".zip", ""), "zip", real_data_dir)
+            cmd_up_d = [colab_bin, "upload", real_data_zip, "/content/real_dataset_upload.zip", "-s", session_name]
+            subprocess.run(cmd_up_d, check=True)
+            if os.path.exists(real_data_zip):
+                os.remove(real_data_zip)
+            print("[✓] Real dataset uploaded.")
+
+        # 4. Brief pause after upload to let Colab filesystem buffers settle
+        time.sleep(3)
+
+        # 5. Execute Setup + Progressive Resizing curriculum + Scorecard generation in unified remote run
+        stage_flag = f"    '--progressive-stages', '{stages_str}',\n" if stages_str else ""
+        init_w_arg = "    '--initial-weights', '/content/initial_weights.pt',\n" if (initial_weights and os.path.exists(initial_weights)) else ""
+        real_arg = f"    '--real-data-dir', '/content/real_data',\n    '--real-ratio', '{real_ratio}',\n" if (real_data_dir and os.path.exists(real_data_dir)) else ""
+
+        unified_remote_script = (
+            "import os, zipfile, subprocess, sys\n"
+            "print('[Colab VM] Unpacking codebase bundle...', flush=True)\n"
+            "with zipfile.ZipFile('/content/target_scorer_colab_bundle.zip', 'r') as z:\n"
+            "    z.extractall('/content')\n"
+            "if os.path.exists('/content/real_dataset_upload.zip'):\n"
+            "    os.makedirs('/content/real_data', exist_ok=True)\n"
+            "    with zipfile.ZipFile('/content/real_dataset_upload.zip', 'r') as zd:\n"
+            "        zd.extractall('/content/real_data')\n"
+            "subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', '-e', '/content/target_scorer'], check=True)\n"
+            "print('[✓] Environment configured. Launching Progressive Resizing training...', flush=True)\n"
+            "os.makedirs('/content/target_scorer/weights', exist_ok=True)\n"
+            "cmd = [\n"
+            "    sys.executable, '-u', '-m', 'target_scorer.train',\n"
+            "    '--progressive',\n"
+            f"{stage_flag}"
+            f"{init_w_arg}"
+            f"{real_arg}"
+            "    '--checkpoint-dir', '/content/target_scorer/weights',\n"
+            "    '--checkpoint', '/content/target_scorer/weights/target_scoring_hrnet_1024_best.pt',\n"
+            "    '--amp',\n"
+            "]\n"
+            "proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)\n"
+            "for line in proc.stdout:\n"
+            "    print(line, end='', flush=True)\n"
+            "proc.wait()\n"
+            "if proc.returncode != 0:\n"
+            "    sys.exit(proc.returncode)\n"
+            "# Generate diagnostic scorecards for each stage\n"
+            "print('[Colab VM] Rendering multi-resolution diagnostic scorecards...', flush=True)\n"
+            "stages = [(256, 1.0), (512, 2.0), (768, 3.0), (1024, 4.0)]\n"
+            "for sz, sc in stages:\n"
+            "    ckpt = f'/content/target_scorer/weights/target_scoring_hrnet_{sz}_best.pt'\n"
+            "    if not os.path.exists(ckpt):\n"
+            "        continue\n"
+            "    for tgt in ['B-2', 'B-3']:\n"
+            "        tgt_code = tgt.lower().replace('-', '')\n"
+            "        out_img = f'/content/target_scorer/colab_scorecard_{sz}_{tgt_code}.png'\n"
+            "        inf_cmd = [\n"
+            "            sys.executable, '-u', '-m', 'target_scorer.infer',\n"
+            "            '--checkpoint', ckpt,\n"
+            "            '--canvas-size', str(sz),\n"
+            "            '--scale', str(sc),\n"
+            "            '--threshold', '0.35',\n"
+            "            '--target', tgt,\n"
+            "            '--output', out_img,\n"
+            "        ]\n"
+            "        p = subprocess.Popen(inf_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)\n"
+            "        for l in p.stdout: print(l, end='', flush=True)\n"
+            "        p.wait()\n"
+            "print('[✓] All stages trained and scorecards rendered successfully.', flush=True)\n"
+        )
+
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            print(f"[4/6] Executing Progressive Resizing curriculum on NVIDIA {gpu} (Attempt {attempt}/{max_retries})...")
+            proc_train = subprocess.Popen(
+                [colab_bin, "exec", "-s", session_name, "--timeout", str(timeout_seconds)],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1
+            )
+            proc_train.stdin.write(unified_remote_script)
+            proc_train.stdin.close()
+            error_connection_lost = False
+            for line in proc_train.stdout:
+                if "Connection was lost" in line:
+                    error_connection_lost = True
+                print(line, end='', flush=True)
+            proc_train.wait()
+            if proc_train.returncode == 0:
+                break
+            if error_connection_lost and attempt < max_retries:
+                print(f"[!] Colab connection lost during initial connect. Waiting 5s before reconnecting (Attempt {attempt+1}/{max_retries})...")
+                time.sleep(5)
+                continue
+            raise RuntimeError(f"Progressive training failed on Colab VM with code {proc_train.returncode}.")
+
+        # 6. Retrieve all stage weights and visual scorecards
+        print("[6/7] Downloading trained weights and diagnostic scorecards...")
+        if stages_str:
+            from target_scorer.train import parse_progressive_stages
+            parsed_stages = parse_progressive_stages(stages_str)
+            target_resolutions = [s[0] for s in parsed_stages]
+        else:
+            target_resolutions = [256, 512, 768, 1024]
+
+        for sz in target_resolutions:
+            remote_ckpt = f"/content/target_scorer/weights/target_scoring_hrnet_{sz}_best.pt"
+            local_ckpt = os.path.join(local_ckpt_dir, f"target_scoring_hrnet_{sz}_best.pt")
+            try:
+                subprocess.run([colab_bin, "download", remote_ckpt, local_ckpt, "-s", session_name], check=True)
+                print(f"[✓] Stage {sz} checkpoint saved locally: {local_ckpt}")
+            except Exception as e:
+                print(f"[!] Warning: Could not download stage {sz} checkpoint: {e}")
+
+            for tgt in ["b2", "b3"]:
+                remote_card = f"/content/target_scorer/colab_scorecard_{sz}_{tgt}.png"
+                local_card = os.path.join(local_scorecard_dir, f"colab_scorecard_{sz}_{tgt}.png")
+                try:
+                    subprocess.run([colab_bin, "download", remote_card, local_card, "-s", session_name], check=True)
+                    print(f"[✓] Stage {sz} {tgt.upper()} scorecard saved: {local_card}")
+                except Exception:
+                    pass
+
+    finally:
+        # 7. Release session
+        if session_created:
+            print(f"[7/7] Releasing Colab VM session '{session_name}'...")
+            subprocess.run([colab_bin, "stop", "-s", session_name])
+            print("[✓] Colab session terminated successfully.")
+
+    highest_sz = target_resolutions[-1] if target_resolutions else 1024
+    final_ckpt = os.path.join(local_ckpt_dir, f"target_scoring_hrnet_{highest_sz}_best.pt")
+    print("=" * 72)
+    print(f"[✓] Progressive cloud training complete! Primary checkpoint: {final_ckpt}")
+    print("=" * 72)
+    return final_ckpt
+
+
 def run_colab_autolabel(
     input_dir: str,
     output_dir: str = "datasets/autolabeled_targets",
@@ -463,7 +706,7 @@ def run_colab_autolabel(
 
 def main():
     parser = argparse.ArgumentParser(description="Orchestrate High-Resolution Training & Auto-Labeling on Google Colab CLI")
-    parser.add_argument("--canvas-size", type=int, default=800, choices=[256, 512, 800, 1024], help="Target canvas resolution (800 or 1024 recommended)")
+    parser.add_argument("--canvas-size", type=int, default=1024, choices=[256, 512, 768, 800, 1024], help="Target canvas resolution (default: 1024)")
     parser.add_argument("--scale", type=float, default=4.0, help="Pixels per mm metric scale (default: 4.0)")
     parser.add_argument("--epochs", type=int, default=15, help="Number of training epochs (default: 15)")
     parser.add_argument("--batch-size", type=int, default=8, help="Batch size for cloud GPU (default: 8)")
@@ -479,6 +722,8 @@ def main():
     parser.add_argument("--initial-weights", type=str, default=None, help="Path to local weights checkpoint to warm-start/fine-tune from in Colab")
     parser.add_argument("--real-data-dir", type=str, default=None, help="Path to local real target dataset directory to upload for training")
     parser.add_argument("--real-ratio", type=float, default=0.35, help="Sampling probability for real target images (1.0 = pure real fine-tuning, 0.35 = hybrid)")
+    parser.add_argument("--progressive", action="store_true", default=False, help="Run unified Progressive Resizing curriculum (256 -> 512 -> 768 -> 1024)")
+    parser.add_argument("--progressive-stages", type=str, default=None, help="Custom comma-separated progressive stages schedule")
     parser.add_argument("--list-sessions", action="store_true", default=False, help="List active Colab sessions and exit")
     parser.add_argument("--stop-session", type=str, default=None, help="Stop an active Colab session and exit")
 
@@ -493,24 +738,38 @@ def main():
         stop_colab_session(colab_bin, args.stop_session)
         return
 
-    run_colab_training(
-        canvas_size=args.canvas_size,
-        pixels_per_mm=args.scale,
-        epochs=args.epochs,
-        batch_size=args.batch_size,
-        train_samples_per_epoch=args.train_samples,
-        val_samples_per_epoch=args.val_samples,
-        learning_rate=args.lr,
-        gpu=args.gpu,
-        high_mem=args.high_mem,
-        session_name=args.session,
-        checkpoint_dest=args.checkpoint,
-        timeout_seconds=args.timeout,
-        sigma=args.sigma,
-        initial_weights=args.initial_weights,
-        real_data_dir=args.real_data_dir,
-        real_ratio=args.real_ratio,
-    )
+    if args.progressive:
+        run_colab_progressive_training(
+            gpu=args.gpu,
+            high_mem=args.high_mem,
+            session_name=args.session,
+            stages_str=args.progressive_stages,
+            checkpoint_dir="weights",
+            scorecards_dir="visual_inspection_reports",
+            initial_weights=args.initial_weights,
+            real_data_dir=args.real_data_dir,
+            real_ratio=args.real_ratio,
+            timeout_seconds=args.timeout,
+        )
+    else:
+        run_colab_training(
+            canvas_size=args.canvas_size,
+            pixels_per_mm=args.scale,
+            epochs=args.epochs,
+            batch_size=args.batch_size,
+            train_samples_per_epoch=args.train_samples,
+            val_samples_per_epoch=args.val_samples,
+            learning_rate=args.lr,
+            gpu=args.gpu,
+            high_mem=args.high_mem,
+            session_name=args.session,
+            checkpoint_dest=args.checkpoint,
+            timeout_seconds=args.timeout,
+            sigma=args.sigma,
+            initial_weights=args.initial_weights,
+            real_data_dir=args.real_data_dir,
+            real_ratio=args.real_ratio,
+        )
 
 
 if __name__ == "__main__":

@@ -28,7 +28,7 @@ from target_scorer.synthetic.generator import (
 
 
 def generate_synthetic_demo_target(
-    canvas_size: int = 512,
+    canvas_size: int = 1024,
     pixels_per_mm: float = 4.0,
     target_type: str = "B-2"
 ) -> Tuple[np.ndarray, Tuple[float, float]]:
@@ -116,15 +116,15 @@ def run_inference_and_scoring(
 
     config = checkpoint.get("config", None)
     if isinstance(config, dict):
-        ckpt_canvas = config.get("canvas_size", 512)
+        ckpt_canvas = config.get("canvas_size", 1024)
         ckpt_scale = config.get("pixels_per_mm", 4.0)
         bullet_diameter_mm = config.get("bullet_diameter_mm", 5.69)
     elif config is not None:
-        ckpt_canvas = getattr(config, "canvas_size", 512)
+        ckpt_canvas = getattr(config, "canvas_size", 1024)
         ckpt_scale = getattr(config, "pixels_per_mm", 4.0)
         bullet_diameter_mm = getattr(config, "bullet_diameter_mm", 5.69)
     else:
-        ckpt_canvas = 512
+        ckpt_canvas = 1024
         ckpt_scale = 4.0
         bullet_diameter_mm = 5.69
 
@@ -261,6 +261,7 @@ def run_inference_and_scoring(
         rings_cfg=rings_cfg,
         rect_meta=rect_meta,
         redact_pii=redact_pii,
+        heat_threshold=peak_threshold,
     )
 
     out_dir = os.path.dirname(os.path.abspath(output_path))
@@ -273,7 +274,7 @@ def run_inference_and_scoring(
 
 def main():
     parser = argparse.ArgumentParser(description="Camera-Independent Target Scoring & Metrology Engine (NRA B-2 & B-3)")
-    parser.add_argument("--checkpoint", type=str, default="target_scoring_hrnet_best.pt", help="Path to trained PyTorch weights")
+    parser.add_argument("--checkpoint", type=str, default="weights/target_scoring_hrnet_1024_best.pt", help="Path to trained PyTorch weights")
     parser.add_argument("--image", type=str, default=None, help="Path to raw smartphone target photo")
     parser.add_argument("--target", type=str, default="B-2", choices=["B-2", "B-3", "b-2", "b-3"], help="NRA target face ('B-2' or 'B-3')")
     parser.add_argument("--output", type=str, default="scored_inspection_result.png", help="Path to save output scorecard image")

@@ -19,7 +19,7 @@ def rectify_cli():
     parser.add_argument("--target", type=str, default="B-2", choices=["B-2", "B-3", "b-2", "b-3"], help="NRA target type")
     parser.add_argument("--output", type=str, default="rectified_target.png", help="Path to save canonical crop")
     parser.add_argument("--debug", type=str, default="rectification_debug.png", help="Path to save diagnostic panel")
-    parser.add_argument("--canvas-size", type=int, default=512, help="Canonical canvas dimensions")
+    parser.add_argument("--canvas-size", type=int, default=1024, help="Canonical canvas dimensions (default: 1024)")
     parser.add_argument("--scale", type=float, default=4.0, help="Pixels per mm metric scale")
     args = parser.parse_args(sys.argv[2:])
 
@@ -181,6 +181,7 @@ def main():
     subparsers.add_parser("infer", help="Run shot detection, inward scoring, and scorecard rendering")
     subparsers.add_parser("train", help="Run procedural synthetic training pipeline")
     subparsers.add_parser("colab-train", help="Run cloud GPU training via Google Colab CLI (A100/H100/T4)")
+    subparsers.add_parser("colab-progressive-train", help="Run multi-stage Progressive Resizing training via Google Colab CLI (A100/T4)")
     subparsers.add_parser("colab-autolabel", help="Run cloud GPU assisted auto-labeling via Google Colab CLI")
     subparsers.add_parser("rectify", help="Run standalone geometric rectification")
     subparsers.add_parser("autolabel", help="Run model-assisted active learning and auto-labeling")
@@ -200,6 +201,9 @@ def main():
         train_main()
     elif subcommand == "colab-train":
         sys.argv = [sys.argv[0]] + sys.argv[2:]
+        colab_main()
+    elif subcommand == "colab-progressive-train":
+        sys.argv = [sys.argv[0], "--progressive"] + sys.argv[2:]
         colab_main()
     elif subcommand == "colab-autolabel":
         colab_autolabel_cli()

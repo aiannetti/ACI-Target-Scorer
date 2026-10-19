@@ -22,7 +22,8 @@ def render_scoring_inspection_overlay(
     bullet_diameter_mm: float = 5.69,
     rings_cfg: Optional[TargetRingsConfig] = None,
     rect_meta: Optional[RectificationResult] = None,
-    redact_pii: bool = False
+    redact_pii: bool = False,
+    heat_threshold: Optional[float] = None,
 ) -> np.ndarray:
     """Renders composite inspection image: canonical target on left, scoreboard HUD on right."""
     if rings_cfg is None:
@@ -57,11 +58,20 @@ def render_scoring_inspection_overlay(
     if bullet_heatmap.shape[:2] != (h, w):
         bullet_heatmap = cv2.resize(bullet_heatmap, (w, h), interpolation=cv2.INTER_LINEAR)
 
-    # 1. Overlay semi-transparent heat trace
-    hmap_uint8 = np.clip(bullet_heatmap * 255.0, 0, 255).astype(np.uint8)
-    hmap_color = cv2.applyColorMap(hmap_uint8, cv2.COLORMAP_JET)
-    heat_mask = (bullet_heatmap > 0.15).astype(np.float32)[:, :, np.newaxis]
-    canvas = (canvas * (1.0 - 0.35 * heat_mask) + hmap_color * (0.35 * heat_mask)).astype(np.uint8)
+    # 1. Overlay semi-transparent heat trace gated above the background floor.
+    # Prevents low-level background activations from tinting the authentic tan cardboard substrate blue.
+    bg_floor = float(np.percentile(bullet_heatmap, 95.0))
+    if heat_threshold is None:
+        eff_heat_thresh = max(0.35, bg_floor + 0.05)
+    else:
+        eff_heat_thresh = max(heat_threshold, bg_floor + 0.03)
+
+    norm_heat = np.clip((bullet_heatmap - eff_heat_thresh) / max(1e-5, (1.0 - eff_heat_thresh)), 0.0, 1.0)
+    if np.any(norm_heat > 0.0):
+        hmap_uint8 = (norm_heat * 255.0).astype(np.uint8)
+        hmap_color = cv2.applyColorMap(hmap_uint8, cv2.COLORMAP_JET)
+        alpha = (norm_heat * 0.40)[:, :, np.newaxis]
+        canvas = (canvas * (1.0 - alpha) + hmap_color * alpha).astype(np.uint8)
 
     # 2. Draw official NRA target scoring ring contours
     black_rad_px = int(round(rings_cfg.get_black_radius_mm() * pixels_per_mm))

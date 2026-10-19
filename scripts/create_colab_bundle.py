@@ -29,6 +29,8 @@ EXCLUDE_DIRS = {
     "datasets",
     "range_photos",
     "autolabeled_photos",
+    "samples",
+    "docs",
 }
 
 EXCLUDE_EXTS = {

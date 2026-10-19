@@ -36,6 +36,11 @@ scored_inspection_result.png
 rectification_debug.png
 rectified_*.png
 rect_debug_*.png
+scored_target_*.png
+
+# Local photo datasets and autolabeled caches
+range_photos/
+autolabeled_photos/
 
 # PyTorch checkpoints (optional - allow specific weights)
 *.tmp

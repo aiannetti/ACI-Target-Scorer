@@ -42,7 +42,7 @@ class TargetRectifier:
     def __init__(
         self,
         target_type: str = "B-2",
-        canonical_dim: int = 512,
+        canonical_dim: int = 1024,
         pixels_per_mm: float = 4.0,
         min_blur_metric: float = 75.0,
         max_tilt_deg: float = 48.0,

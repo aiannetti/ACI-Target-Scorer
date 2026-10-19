@@ -10,10 +10,10 @@ import torch
 @dataclass
 class TargetConfig:
     """Configuration parameters for synthetic target and heatmap generation."""
-    canvas_size: int = 512
+    canvas_size: int = 1024
     pixels_per_mm: float = 4.0
     bullet_diameter_mm: float = 5.69
-    heatmap_sigma_px: float = 2.5
+    heatmap_sigma_px: float = 3.2
     ring_line_width_px: int = 2
     flute_direction: str = "vertical"
     grease_ring_width_mm: float = 0.45
