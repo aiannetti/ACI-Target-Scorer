@@ -86,7 +86,7 @@ class RealTargetDataset(Dataset):
 
         # 2. If no manifest or empty, scan annotations directory
         if not self.samples:
-            ann_files = list(self.annotations_dir.glob("*.json"))
+            ann_files = list(self.annotations_dir.rglob("*.json"))
             for ann_p in sorted(ann_files):
                 if ann_p.name == "manifest.json":
                     continue
@@ -94,6 +94,9 @@ class RealTargetDataset(Dataset):
                     ann = TargetAnnotation.from_json(ann_p)
                     # Check possible image locations
                     possible_img_paths = [
+                        ann_p.parent / ann.image_filename,
+                        ann_p.parent / f"{ann.target_id}_canonical.png",
+                        ann_p.parent / f"{ann.target_id}.png",
                         self.images_dir / ann.image_filename,
                         self.data_dir / "canonical_1024" / ann.image_filename,
                         self.data_dir / "images" / ann.image_filename,
@@ -101,7 +104,7 @@ class RealTargetDataset(Dataset):
                         self.annotations_dir.parent / "images" / ann.image_filename,
                     ]
                     for img_p in possible_img_paths:
-                        if img_p.exists():
+                        if img_p.exists() and img_p.is_file():
                             self.samples.append({"image": img_p, "annotation": ann_p})
                             break
                 except Exception:

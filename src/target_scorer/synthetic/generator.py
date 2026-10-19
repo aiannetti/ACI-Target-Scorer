@@ -138,7 +138,8 @@ def sample_bullet_void_bgr(config: Optional[TargetConfig] = None) -> Tuple[int, 
 
 
 def stamp_bullet_hole(canvas: np.ndarray, center: Tuple[float, float], 
-                      config: TargetConfig, raggedness: float = 1.0) -> ShotAnnotation:
+                      config: TargetConfig, raggedness: float = 1.0,
+                      void_bgr: Optional[Tuple[int, int, int]] = None) -> ShotAnnotation:
     """Stamps realistic single bullet penetration hole with lead wipe grease ring and multi-tone void."""
     cx, cy = center
     r_bullet_px = (config.bullet_diameter_mm / 2.0) * config.pixels_per_mm
@@ -151,7 +152,8 @@ def stamp_bullet_hole(canvas: np.ndarray, center: Tuple[float, float],
     # 2. Perforated void with simulated illumination (scanner white, dark range, or tan backer)
     effective_void_radius = r_bullet_px * (0.80 * raggedness)
     hole_poly = generate_ragged_contour((cx, cy), effective_void_radius, config)
-    void_bgr = sample_bullet_void_bgr(config)
+    if void_bgr is None:
+        void_bgr = sample_bullet_void_bgr(config)
     cv2.fillPoly(canvas, [hole_poly], void_bgr, lineType=cv2.LINE_AA)
 
     # 3. Torn paper fibers around penetration boundary
@@ -186,7 +188,8 @@ def stamp_bullet_hole(canvas: np.ndarray, center: Tuple[float, float],
 
 
 def stamp_double_shot(canvas: np.ndarray, primary_center: Tuple[float, float],
-                      config: TargetConfig) -> List[ShotAnnotation]:
+                      config: TargetConfig,
+                      void_bgr: Optional[Tuple[int, int, int]] = None) -> List[ShotAnnotation]:
     """Stamps overlapping double shot with shared ragged boundary."""
     r_bullet_px = (config.bullet_diameter_mm / 2.0) * config.pixels_per_mm
     margin_px = max(16.0, config.canvas_size * 0.06)
@@ -196,15 +199,18 @@ def stamp_double_shot(canvas: np.ndarray, primary_center: Tuple[float, float],
     cx2 = max(margin_px, min(config.canvas_size - margin_px, cx1 + separation_dist * np.cos(angle)))
     cy2 = max(margin_px, min(config.canvas_size - margin_px, cy1 + separation_dist * np.sin(angle)))
 
-    shot1 = stamp_bullet_hole(canvas, (cx1, cy1), config, raggedness=0.95)
+    if void_bgr is None:
+        void_bgr = sample_bullet_void_bgr(config)
+    shot1 = stamp_bullet_hole(canvas, (cx1, cy1), config, raggedness=0.95, void_bgr=void_bgr)
     shot1.shot_type = "double_primary"
-    shot2 = stamp_bullet_hole(canvas, (cx2, cy2), config, raggedness=1.0)
+    shot2 = stamp_bullet_hole(canvas, (cx2, cy2), config, raggedness=1.0, void_bgr=void_bgr)
     shot2.shot_type = "double_secondary"
     return [shot1, shot2]
 
 
 def stamp_keyhole_shot(canvas: np.ndarray, center: Tuple[float, float],
-                       config: TargetConfig) -> ShotAnnotation:
+                       config: TargetConfig,
+                       void_bgr: Optional[Tuple[int, int, int]] = None) -> ShotAnnotation:
     """Stamps elongated tumbling keyhole shot with lead wipe and void backing."""
     cx, cy = center
     r_bullet_px = (config.bullet_diameter_mm / 2.0) * config.pixels_per_mm
@@ -218,7 +224,8 @@ def stamp_keyhole_shot(canvas: np.ndarray, center: Tuple[float, float],
     cv2.ellipse(canvas, center_int, axes, yaw_deg, 0, 360, (25, 25, 28), -1, lineType=cv2.LINE_AA)
 
     void_axes = (int(round(major_len_px * 0.85)), int(round(minor_len_px * 0.80)))
-    void_bgr = sample_bullet_void_bgr(config)
+    if void_bgr is None:
+        void_bgr = sample_bullet_void_bgr(config)
     cv2.ellipse(canvas, center_int, void_axes, yaw_deg, 0, 360, void_bgr, -1, lineType=cv2.LINE_AA)
 
     return ShotAnnotation(
@@ -471,12 +478,13 @@ def generate_synthetic_target_sample(
         sy = max(margin_px, min(config.canvas_size - margin_px, bull_y + r * np.sin(theta)))
         return (float(sx), float(sy))
 
+    target_void = sample_bullet_void_bgr(config)
     for _ in range(num_singles):
-        annotations.append(stamp_bullet_hole(canvas, sample_shot_position(), config, raggedness=random.uniform(0.9, 1.1)))
+        annotations.append(stamp_bullet_hole(canvas, sample_shot_position(), config, raggedness=random.uniform(0.9, 1.1), void_bgr=target_void))
     for _ in range(num_doubles):
-        annotations.extend(stamp_double_shot(canvas, sample_shot_position(), config))
+        annotations.extend(stamp_double_shot(canvas, sample_shot_position(), config, void_bgr=target_void))
     for _ in range(num_keyholes):
-        annotations.append(stamp_keyhole_shot(canvas, sample_shot_position(), config))
+        annotations.append(stamp_keyhole_shot(canvas, sample_shot_position(), config, void_bgr=target_void))
 
     if config.include_scorer_marks:
         canvas = render_scorer_annotations(canvas, annotations, config, bullseye_center, ring_radii_px)

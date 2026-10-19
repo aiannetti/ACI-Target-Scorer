@@ -547,9 +547,9 @@ class AnnotationEditor(tk.Tk):
         ttk.Label(top_bar, text="Caliber:").pack(side=tk.LEFT, padx=(0, 4))
         self.caliber_combo = ttk.Combobox(
             top_bar,
-            values=[".22 LR (5.69 mm)", "9mm / .38 (9.02 mm)", ".45 ACP (11.48 mm)"],
+            values=[".22 LR (5.69 mm)", ".32 S&W Long (7.98 mm)", "9mm / .38 (9.02 mm)", ".45 ACP (11.48 mm)"],
             state="readonly",
-            width=18
+            width=22
         )
         self.caliber_combo.current(0)
         self.caliber_combo.bind("<<ComboboxSelected>>", self.on_caliber_changed)
@@ -866,20 +866,24 @@ class AnnotationEditor(tk.Tk):
 
     def _update_caliber_combobox(self):
         cal = self.caliber_mm
-        if abs(cal - 5.69) < 0.5:
+        if abs(cal - 5.69) < 0.4:
             self.caliber_combo.current(0)
-        elif abs(cal - 9.02) < 0.5:
+        elif abs(cal - 7.98) < 0.4:
             self.caliber_combo.current(1)
-        elif abs(cal - 11.48) < 0.5:
+        elif abs(cal - 9.02) < 0.4:
             self.caliber_combo.current(2)
+        elif abs(cal - 11.48) < 0.5:
+            self.caliber_combo.current(3)
 
     def on_caliber_changed(self, event=None):
         idx = self.caliber_combo.current()
         if idx == 0:
             self.caliber_mm = 5.69
         elif idx == 1:
-            self.caliber_mm = 9.02
+            self.caliber_mm = 7.98
         elif idx == 2:
+            self.caliber_mm = 9.02
+        elif idx == 3:
             self.caliber_mm = 11.48
 
         for s in self.shots:
@@ -1491,8 +1495,16 @@ class AnnotationEditor(tk.Tk):
 
 def launch_annotation_editor(target_path: Optional[Union[str, Path]] = None, target_type: Optional[str] = None):
     """Entry point for running the Annotation Editor GUI."""
-    app = AnnotationEditor(target_dir_or_file=target_path, target_type_override=target_type)
-    app.mainloop()
+    try:
+        app = AnnotationEditor(target_dir_or_file=target_path, target_type_override=target_type)
+        app.mainloop()
+    except tk.TclError as e:
+        if "display" in str(e).lower():
+            print("[-] Error: Could not connect to graphical display server ($DISPLAY or Wayland).")
+            print("    The Interactive Annotation Editor requires an X11 or Wayland desktop environment.")
+            print("    If connecting remotely via SSH, use 'ssh -X' or 'ssh -Y' to enable X11 forwarding.")
+            sys.exit(1)
+        raise
 
 
 if __name__ == "__main__":

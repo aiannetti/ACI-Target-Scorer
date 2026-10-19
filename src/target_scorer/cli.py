@@ -79,6 +79,8 @@ def autolabel_cli():
     targets_to_process = sorted(list(set(targets_to_process)))
     print(f"[+] Found {len(targets_to_process)} target(s) to auto-label.")
 
+    success_count = 0
+    failure_count = 0
     for i, target_file in enumerate(targets_to_process, 1):
         print(f"[{i}/{len(targets_to_process)}] Processing '{target_file.name}'...")
         try:
@@ -94,8 +96,14 @@ def autolabel_cli():
                 redact_pii=args.redact_pii,
             )
             print(f"    [✓] Auto-labeled {len(ann.shots)} shots -> JSON: {json_p.name} | Review: {rev_p.name}")
+            success_count += 1
         except Exception as e:
             print(f"    [-] Failed to process '{target_file.name}': {e}")
+            failure_count += 1
+
+    print(f"\n[+] Auto-labeling complete: {success_count} succeeded, {failure_count} failed.")
+    if failure_count > 0 and success_count == 0:
+        sys.exit(1)
 
 
 def colab_autolabel_cli():
