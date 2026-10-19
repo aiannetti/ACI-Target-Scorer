@@ -37,11 +37,15 @@ def run_pipeline(gpu: str = "A100"):
 
     ckpt_dir = str(PROJECT_ROOT / "weights")
     scorecards_dir = str(PROJECT_ROOT / "visual_inspection_reports")
+    real_targets_dir = str(PROJECT_ROOT / "datasets" / "real_targets")
+    use_real = os.path.exists(real_targets_dir)
 
     # Run the unified progressive cloud curriculum
     primary_ckpt = run_colab_progressive_training(
         gpu=gpu,
         high_mem=False,
+        real_data_dir=real_targets_dir if use_real else None,
+        real_ratio=0.35 if use_real else 0.0,
         checkpoint_dir="weights",
         scorecards_dir="visual_inspection_reports",
         timeout_seconds=3600.0,
