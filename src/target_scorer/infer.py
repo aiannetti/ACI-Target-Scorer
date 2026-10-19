@@ -23,6 +23,7 @@ from target_scorer.models.unet import HighResHeatmapUNet
 from target_scorer.synthetic.generator import (
     draw_standard_bullseye,
     generate_cardboard_texture,
+    sample_bullet_void_bgr,
     stamp_bullet_hole,
 )
 
@@ -51,15 +52,28 @@ def generate_synthetic_demo_target(
         img, center, _ = draw_standard_bullseye(img, cfg)
 
         cx, cy = center
-        # 10 official competition shots with millimeter offsets calibrated across B-2 & B-3
-        demo_offsets_mm = [
-            (1.5, -2.0), (-3.0, 3.5), (5.5, 4.0), (-6.0, -5.0), (8.0, -6.5),
-            (-9.5, 8.0), (12.0, 7.0), (-14.5, -8.0), (16.0, -11.0), (-18.5, 14.0)
+        # 10 calibrated competition shots spanning inner black, outer rings, paper margin, and off-paper backer
+        # with balanced multi-tone voids (1/3 scanner white, 1/3 dark void, 1/3 tan backer)
+        demo_spec = [
+            # (dx_mm, dy_mm, void_type)
+            (1.5, -2.0, "scanner_white"),   # Shot 1: Inner 10-ring (White scanner void)
+            (-3.0, 3.5, "tan_backer"),      # Shot 2: Inner 10-ring (Tan cardboard backer)
+            (6.5, 5.0, "dark_void"),        # Shot 3: Inner 9-ring (Dark range void)
+            (-8.0, -7.5, "tan_backer"),     # Shot 4: Inner 9-ring (Tan cardboard backer)
+            (15.0, -13.0, "scanner_white"), # Shot 5: Inner 8-ring (White scanner void)
+            (-26.0, 22.0, "dark_void"),     # Shot 6: Outer 7-ring (Dark range void)
+            (42.0, 32.0, "tan_backer"),     # Shot 7: Outer 6-ring (Tan cardboard backer on tan cardstock)
+            (-60.0, -45.0, "scanner_white"),# Shot 8: Outer 5-ring (White scanner void on tan cardstock)
+            (88.0, -65.0, "tan_backer"),    # Shot 9: Paper margin outside scoring rings (Tan backer)
+            (-105.0, 110.0, "dark_void"),   # Shot 10: Off-paper / cardboard backer edge (Dark void)
         ]
-        demo_shots = [(cx + dx * pixels_per_mm, cy + dy * pixels_per_mm) for dx, dy in demo_offsets_mm]
 
-        for sx, sy in demo_shots:
-            stamp_bullet_hole(img, (sx, sy), cfg, raggedness=1.0)
+        for dx, dy, v_mode in demo_spec:
+            sx = max(8.0, min(canvas_size - 8.0, cx + dx * pixels_per_mm))
+            sy = max(8.0, min(canvas_size - 8.0, cy + dy * pixels_per_mm))
+            v_cfg = TargetConfig(void_color_mode=v_mode)
+            void_color = sample_bullet_void_bgr(v_cfg)
+            stamp_bullet_hole(img, (sx, sy), cfg, raggedness=1.0, void_bgr=void_color)
     finally:
         random.setstate(py_state)
         np.random.set_state(np_state)

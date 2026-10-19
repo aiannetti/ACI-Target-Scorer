@@ -365,9 +365,9 @@ def run_training(
 DEFAULT_PROGRESSIVE_STAGES: List[Tuple[int, float, float, int, int, float, int, int]] = [
     # (canvas_size, scale_px_per_mm, sigma_px, batch_size, epochs, lr, train_samples, val_samples)
     (256, 1.0, 1.6, 16, 6, 4.5e-4, 500, 50),
-    (512, 2.0, 2.2, 12, 5, 3.0e-4, 400, 50),
-    (768, 3.0, 2.8, 8, 5, 2.0e-4, 350, 50),
-    (1024, 4.0, 3.2, 8, 10, 1.0e-4, 400, 50),
+    (512, 2.0, 2.2, 12, 6, 3.0e-4, 500, 50),
+    (768, 3.0, 2.8, 8, 6, 2.0e-4, 450, 50),
+    (1024, 4.0, 3.2, 8, 14, 1.0e-4, 500, 50),
 ]
 
 

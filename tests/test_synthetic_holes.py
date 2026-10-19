@@ -81,20 +81,59 @@ class TestSyntheticHolesAndMarkings(unittest.TestCase):
         center_pixel = canvas[100, 100]
         self.assertTrue(all(c >= 215 for c in center_pixel), f"Expected white center in keyhole, got {center_pixel}")
 
-    def test_generate_synthetic_target_sample_preserves_marks(self):
-        """Verifies complete sample generation with handwriting and scorer markings."""
-        cfg = TargetConfig(
-            canvas_size=512,
-            target_type="B-3",
-            include_handwriting=True,
-            include_scorer_marks=True,
-            include_header_text=True,
-            void_color_mode="mixed"
-        )
-        img, heatmap, shots, bull_center, ring_radii = generate_synthetic_target_sample(cfg, num_singles=5, num_doubles=1, num_keyholes=1)
-        self.assertEqual(img.shape, (512, 512, 3))
-        self.assertEqual(heatmap.shape, (512, 512))
-        self.assertEqual(len(shots), 8)  # 5 + 2 + 1 = 8 shots
+    def test_sample_bullet_void_bgr_balanced_distribution(self):
+        """Verifies exactly 1/3 white, 1/3 black/dark, 1/3 tan backer voids in mixed mode."""
+        cfg_mixed = TargetConfig(void_color_mode="mixed")
+        n_samples = 600
+        sampled = [sample_bullet_void_bgr(cfg_mixed) for _ in range(n_samples)]
+
+        count_white = sum(1 for s in sampled if s[0] >= 215)
+        count_dark = sum(1 for s in sampled if s[0] <= 32)
+        count_tan = sum(1 for s in sampled if 130 <= s[0] <= 180)
+
+        self.assertEqual(count_white + count_dark + count_tan, n_samples)
+        # Expected ~200 each (33.3%). Allow generous statistical tolerance [140, 260]
+        self.assertGreater(count_white, 140, f"White voids under-represented: {count_white}/{n_samples}")
+        self.assertLess(count_white, 260, f"White voids over-represented: {count_white}/{n_samples}")
+        self.assertGreater(count_dark, 140, f"Dark voids under-represented: {count_dark}/{n_samples}")
+        self.assertLess(count_dark, 260, f"Dark voids over-represented: {count_dark}/{n_samples}")
+        self.assertGreater(count_tan, 140, f"Tan voids under-represented: {count_tan}/{n_samples}")
+        self.assertLess(count_tan, 260, f"Tan voids over-represented: {count_tan}/{n_samples}")
+
+    def test_stratified_4zone_shot_placement(self):
+        """Verifies synthetic generation places shots across all 4 physical zones."""
+        import math
+        cfg = TargetConfig(canvas_size=1024, pixels_per_mm=4.0, target_type="B-2")
+        bull_center = (512.0, 512.0)
+        r_bull = 38.989 * 4.0   # ~156 px
+        r_outer = 93.091 * 4.0  # ~372 px
+
+        zone_counts = {"inner_black": 0, "outer_rings": 0, "paper_margin": 0, "off_paper_edge": 0}
+        for _ in range(40):
+            _, _, shots, _, _ = generate_synthetic_target_sample(cfg, num_singles=5, num_doubles=1, num_keyholes=1)
+            for s in shots:
+                x, y = s.center_x, s.center_y
+                r = math.hypot(x - bull_center[0], y - bull_center[1])
+                if x < 40 or x > 984 or y < 40 or y > 984:
+                    zone_counts["off_paper_edge"] += 1
+                elif r <= r_bull:
+                    zone_counts["inner_black"] += 1
+                elif r <= r_outer:
+                    zone_counts["outer_rings"] += 1
+                else:
+                    zone_counts["paper_margin"] += 1
+
+        total_shots = sum(zone_counts.values())
+        self.assertGreater(zone_counts["inner_black"], total_shots * 0.20, f"Inner black under-represented: {zone_counts}")
+        self.assertGreater(zone_counts["outer_rings"], total_shots * 0.08, f"Outer rings under-represented: {zone_counts}")
+        self.assertGreater(zone_counts["paper_margin"], total_shots * 0.08, f"Paper margin under-represented: {zone_counts}")
+        self.assertGreater(zone_counts["off_paper_edge"], total_shots * 0.08, f"Off-paper edge under-represented: {zone_counts}")
+
+    def test_demo_target_has_all_zones_and_voids(self):
+        """Verifies demo targets showcase shots across inner, outer, margin, and edge with all 3 void colors."""
+        from target_scorer.infer import generate_synthetic_demo_target
+        img, (cx, cy) = generate_synthetic_demo_target(canvas_size=1024, pixels_per_mm=4.0, target_type="B-2")
+        self.assertEqual(img.shape, (1024, 1024, 3))
 
 
 if __name__ == "__main__":

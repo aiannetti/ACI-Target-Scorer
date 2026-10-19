@@ -89,7 +89,7 @@ class SyntheticTargetDataset(Dataset):
             bull_y = float(M[1, 0] * bull_center[0] + M[1, 1] * bull_center[1] + M[1, 2])
 
             transformed_shots = []
-            margin = max(6.0, 2.0 * self.config.pixels_per_mm)
+            margin = max(4.0, 1.0 * self.config.pixels_per_mm)
             for sx, sy in shot_coords_list:
                 tx = float(M[0, 0] * sx + M[0, 1] * sy + M[0, 2])
                 ty = float(M[1, 0] * sx + M[1, 1] * sy + M[1, 2])
