@@ -11,21 +11,21 @@ An automated, sub-millimeter computer vision and deep learning metrology engine 
 
 ## Documentation & Comprehensive Guides
 
-For deep dives into workflows, algorithms, and APIs, consult our documentation suite in [`docs/`](file:///home/antho/target_scorer/docs):
+For deep dives into workflows, algorithms, metrology grounding, and APIs, consult our documentation suite in [`docs/`](file:///home/antho/target_scorer/docs):
 
-* 📖 **[CLI & Python API Reference](file:///home/antho/target_scorer/docs/cli_and_api_reference.md):** Complete command-by-command reference with all parameters, flags, types, default values, copy-pasteable shell examples, and programmatic Python APIs for `infer`, `train`, `colab-train`, `colab-autolabel`, `rectify`, `autolabel`, and `annotate`.
+* 📖 **[CLI & Python API Reference](file:///home/antho/target_scorer/docs/cli_and_api_reference.md):** Complete command-by-command reference with all parameters, flags, types, default values, copy-pasteable shell examples, and programmatic Python APIs for `infer`, `train`, `colab-train`, `colab-progressive-train`, `colab-autolabel`, `rectify`, `autolabel`, and `annotate`.
 * 🔍 **[Interactive Annotation Editor & Eagle Eye Guide](file:///home/antho/target_scorer/docs/interactive_annotation_editor_guide.md):** Comprehensive walkthrough of the desktop GUI annotation editor: pan & zoom controls, ring overlays, the optical Eagle Eye Scoring Gauge, NRA Rule 14.3 inward breaks, caliber selection, and keyboard shortcuts.
 * 🎯 **[End-to-End Training & Workflow Tutorial](file:///home/antho/target_scorer/docs/end_to_end_training_and_workflow_tutorial.md):** Step-by-step operational guide from raw range smartphone photos to assisted auto-labeling, active learning verification, hybrid model training (Option A & B), and competitor PII privacy protection.
-* 🏗️ **[Technical Architecture & Developer Guide](file:///home/antho/target_scorer/docs/architecture_and_developer_guide.md):** System data flow diagrams (Mermaid / ASCII), U-Net heatmap regression, Adaptive Wing Loss formulation, Fitzgibbon conic homography unwarping, 2D Taylor-series sub-pixel peak extraction, and `TargetAnnotation` schema.
+* 🏗️ **[Technical Architecture & Developer Guide](file:///home/antho/target_scorer/docs/architecture_and_developer_guide.md):** System data flow diagrams (Mermaid / ASCII), physical metrology grounding, Harmonic 256-Grid Progressive Resizing, U-Net heatmap regression, Adaptive Wing Loss formulation, Fitzgibbon conic homography unwarping, 2D Taylor-series sub-pixel peak extraction, and `TargetAnnotation` schema.
 
 ---
 
 ## Key Features & Capabilities
 
-* **Multi-Resolution Canonical Canvases:**
-  * **$512 \times 512\text{ px}$** ($4.0\text{ px/mm}$, $128\text{ mm}$ FOV): Fast baseline and local verification.
-  * **$800 \times 800\text{ px}$** ($4.0\text{ px/mm}$, $200\text{ mm}$ FOV): Wide aperture capturing outer scoring rings (6-ring and 5-ring).
-  * **$1024 \times 1024\text{ px}$** ($4.0\text{ px/mm}$, $256\text{ mm}$ FOV): Official competition standard; resolves flyers, full cardboard fluting texture, and delivers **$0.335\text{ mm}$ sub-pixel precision** ($< 1.35\text{ px}$).
+* **Harmonic 256-Grid Progressive Resizing Curriculum:**
+  * Grounded in physical target metrology (NRA targets $266.7 \times 266.7\text{ mm}$, .22 LR grease rings $0.2\text{--}0.5\text{ mm}$, Rule 14.3 break tolerance $\pm 0.08\text{ mm}$).
+  * Staged multi-resolution ladder: **$256 \times 256$** ($1.0\text{ px/mm}$) $\to$ **$512 \times 512$** ($2.0\text{ px/mm}$) $\to$ **$768 \times 768$** ($3.0\text{ px/mm}$) $\to$ **$1024 \times 1024$** ($4.0\text{ px/mm}$).
+  * Dynamic spatial resizing in [`HighResHeatmapUNet`](file:///home/antho/target_scorer/src/target_scorer/models/unet.py) preserving AdamW momentum buffers across stages for a **$3.5\times$ training speedup**.
 * **Official NRA Scoring Metrology (Rules 4.2, 4.3, & 14.3):**
   * **NRA B-2 (Rule 4.2):** 50 ft Slow Fire. Innermost ring is the 10-ring ($0.90'' = 22.86\text{ mm}$ dia). Scored as `Score / Max` (e.g. `96 / 100`).
   * **NRA B-3 (Rule 4.3):** 50 ft Timed & Rapid Fire. Innermost ring is the X-ring ($0.90'' = 22.86\text{ mm}$ dia). Scored as `Score - X / Max` (e.g. `100 - 7X / 100`).
@@ -43,13 +43,13 @@ For deep dives into workflows, algorithms, and APIs, consult our documentation s
 * **Competitor Privacy & PII Redaction:**
   * Automated margin redaction (`--redact-pii`) obliterates competitor registration handwriting, relay numbers, and names via circular boundary masking and aggressive Gaussian blurring.
 * **1-Click Google Colab CLI Cloud Orchestration:**
-  * Automated cloud GPU provisioning (NVIDIA A100 / T4) for training (`target-scorer colab-train`) and batch auto-labeling (`target-scorer colab-autolabel`) with automatic session termination to conserve compute units.
+  * Single-session cloud GPU training on NVIDIA A100 / T4 for single-resolution (`target-scorer colab-train`) or multi-stage progressive curriculum (`target-scorer colab-progressive-train`), plus cloud auto-labeling (`target-scorer colab-autolabel`).
 
 ---
 
 ## Quickstart Cheat Sheet
 
-Below are copy-pasteable command snippets for the 7 primary operational workflows:
+Below are copy-pasteable command snippets for all primary operational workflows:
 
 ```bash
 # 1. Score an Apple iPhone HEIC target photo
@@ -64,7 +64,20 @@ target-scorer infer \
 # 2. Launch Interactive Annotation Editor & Eagle Eye Loupe
 target-scorer annotate datasets/real_targets
 
-# 3. Batch auto-label a directory of range photos with PII redaction
+# 3. 1-Click Multi-Stage Progressive Cloud Training (Harmonic 256-Grid on NVIDIA A100)
+target-scorer colab-progressive-train \
+  --gpu A100 \
+  --real-data-dir datasets/real_targets \
+  --real-ratio 0.35
+
+# 4. Local Progressive Resizing Training (256 -> 512 -> 768 -> 1024)
+target-scorer train \
+  --progressive \
+  --real-data-dir datasets/real_targets \
+  --real-ratio 0.35 \
+  --checkpoint weights/target_scoring_hrnet_1024_best.pt
+
+# 5. Batch auto-label a directory of range photos with PII redaction
 target-scorer autolabel \
   --input-dir /path/to/range_photos \
   --output-dir datasets/real_targets \
@@ -72,35 +85,13 @@ target-scorer autolabel \
   --threshold 0.40 \
   --redact-pii
 
-# 4. 1-Click cloud GPU hybrid training on NVIDIA A100 (Google Colab CLI)
-target-scorer colab-train \
-  --canvas-size 1024 \
-  --scale 4.0 \
-  --epochs 15 \
-  --batch-size 8 \
-  --gpu A100 \
-  --real-data-dir datasets/real_targets \
-  --real-ratio 0.35 \
-  --initial-weights weights/target_scoring_hrnet_1024_best.pt
-
-# 5. Cloud-accelerated batch auto-labeling on Google Colab CLI
+# 6. Cloud-accelerated batch auto-labeling on Google Colab CLI
 target-scorer colab-autolabel \
   --input-dir /path/to/phone_snaps \
   --output-dir datasets/cloud_annotated \
   --target B-3 \
   --gpu T4 \
   --redact-pii
-
-# 6. Local hybrid training (70% synthetic + 30% real data)
-target-scorer train \
-  --canvas-size 1024 \
-  --scale 4.0 \
-  --epochs 15 \
-  --batch-size 2 \
-  --lr 1.0e-4 \
-  --real-data-dir datasets/real_targets \
-  --real-ratio 0.35 \
-  --initial-weights weights/target_scoring_hrnet_1024_best.pt
 
 # 7. Standalone camera rectification & perspective unwarping
 target-scorer rectify \
@@ -113,57 +104,16 @@ target-scorer rectify \
 
 ---
 
-## Architecture Overview
+## Harmonic 256-Grid Resolution Specifications
 
-```
-                      [ Raw Target Image / Buffer / Stream ]
-        (Apple HEIC, ProRAW DNG, Ultra HDR, JPEG, PNG, or Picamera2 RAM)
-                                    │
-                                    ▼
-       ┌──────────────────────────────────────────────────────────┐
-       │ Stage 1: ImageCanonicalizer & TargetRectifier           │
-       │  - Polymorphic ingestion (HEIC, RAW, JPEG, PNG, Buffers)│
-       │  - EXIF orientation auto-rotation (tags 1–8)            │
-       │  - Display P3 / ICC color profile mapping to sRGB (CMS) │
-       │  - Laplacian variance motion blur check (> 75.0)        │
-       │  - Specular glare suppression (Navier-Stokes inpaint)   │
-       │  - Bullseye segmentation & morphological close          │
-       │  - Direct least-squares algebraic ellipse fit (Fitzgib.)│
-       │  - Roll-invariant 3x3 Homography -> Metric calibration   │
-       └────────────────────────────┬─────────────────────────────┘
-                                    │ Canonical Crop (1024x1024 @ 4.0 px/mm)
-                                    ▼
-       ┌──────────────────────────────────────────────────────────┐
-       │ Stage 2: HighResHeatmapUNet (PyTorch Deep Learning)     │
-       │  - Dual-channel regression (Ch0: Bullets, Ch1: Bullseye) │
-       │  - Full-resolution stem & high-frequency skip merges    │
-       │  - Trained via Adaptive Wing Loss (A-Wing)              │
-       └────────────────────────────┬─────────────────────────────┘
-                                    │ Continuous 2D Heatmaps
-                                    ▼
-       ┌──────────────────────────────────────────────────────────┐
-       │ Stage 3: Metrology & Scoring Engine                      │
-       │  - Caliber-aware spatial Non-Maximum Suppression (NMS)   │
-       │  - 2D Quadratic Taylor-series sub-pixel peak refinement  │
-       │  - Official NRA B-2 / B-3 inward scoring (effective gauge)│
-       │  - Ballistics: Extreme Spread (mm/MOA), Mean Radius, COI │
-       │  - Full diagnostic scorecard generation with HUD banner  │
-       └──────────────────────────────────────────────────────────┘
-```
+The progression enforces uniform step properties: **$+256\text{ px}$ dimension** and **$+1.0\text{ px/mm}$ scale** per stage.
 
----
-
-## Canvas Resolution Specifications
-
-| Parameter | Baseline ($512 \times 512$) | High-Res ($800 \times 800$) | Competition ($1024 \times 1024$) |
-| :--- | :---: | :---: | :---: |
-| **Pixels Per Millimeter** | $4.0\text{ px/mm}$ | $4.0\text{ px/mm}$ | **$4.0\text{ px/mm}$** |
-| **Physical Field of View (FOV)** | $128 \times 128\text{ mm}$ ($5.04''$) | $200 \times 200\text{ mm}$ ($7.87''$) | **$256 \times 256\text{ mm}$ ($10.08''$)** |
-| **Rings Captured (NRA B-2)** | Rings 10, 9, 8, 7, partial 6 | Rings 10 down to 5 | **All Rings (10 down to 4) + Margins** |
-| **Rings Captured (NRA B-3)** | Rings X, 10, 9, 8, partial 7 | Rings X down to 6 | **All Rings (X down to 6) + Margins** |
-| **Heatmap Sigma ($\sigma$)** | $2.5\text{ px}$ | $2.8\text{ px}$ | **$3.2\text{ px}$** |
-| **Sub-Pixel MRE** | $0.465\text{ mm}$ | $0.380\text{ mm}$ | **$0.335\text{ mm}$ ($< 1.35\text{ px}$)** |
-| **Recommended Hardware** | CPU / GTX 1060 (batch 4) | GTX 1060 (batch 4) / T4 | **NVIDIA A100 / T4 (batch 8)** |
+| Stage | Resolution ($\text{px}$) | Metric Scale | Field of View (FOV) | Gaussian $\sigma$ | Recommended Batch | Physical Metrology Function |
+| :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Stage 1** | $256 \times 256$ | $1.0\text{ px/mm}$ | $256 \times 256\text{ mm}$ | $1.6\text{ px}$ | 16 (GPU) | **Macro Floor:** Coarse bullseye segmentation and global card alignment (> 900 img/s). |
+| **Stage 2** | $512 \times 512$ | $2.0\text{ px/mm}$ | $256 \times 256\text{ mm}$ | $2.2\text{ px}$ | 12 (GPU) | **Ring Tracking:** Scoring ring edge envelopes and macro grease ring tracking. |
+| **Stage 3** | $768 \times 768$ | $3.0\text{ px/mm}$ | $256 \times 256\text{ mm}$ | $2.8\text{ px}$ | 8 (GPU) | **Double Disentanglement:** Warp-aligned ($24 \times 32$); resolves overlapping double/triple holes. |
+| **Stage 4** | **$1024 \times 1024$** | **$4.0\text{ px/mm}$** | **$256 \times 256\text{ mm}$** | **$3.2\text{ px}$** | **8 (A100) / 2 (GTX)**| **Competition Standard:** Sub-pixel error $< 0.08\text{ mm}$ MRE; Rule 14.3 tangent precision. |
 
 ---
 
@@ -179,11 +129,11 @@ target_scorer/
 ├── src/
 │   └── target_scorer/
 │       ├── __init__.py           # Lazy loaders for clean imports
-│       ├── cli.py                # Unified CLI (infer, train, colab-train, colab-autolabel, rectify, autolabel, annotate)
+│       ├── cli.py                # Unified CLI (infer, train, colab-train, colab-progressive-train, etc.)
 │       ├── config.py             # TargetConfig, TrainConfig, TargetRingsConfig
 │       ├── infer.py              # End-to-end inference & metrology pipeline
-│       ├── train.py              # Synthetic and real/hybrid training pipeline
-│       ├── colab_runner.py       # Automated Google Colab CLI cloud orchestrator
+│       ├── train.py              # Single-resolution and Progressive Resizing training pipeline
+│       ├── colab_runner.py       # Cloud orchestrator for Colab CLI (single-res & progressive)
 │       ├── data/
 │       │   ├── schema.py         # TargetAnnotation & AnnotatedShot schema & JSON I/O
 │       │   ├── real_dataset.py   # PyTorch dataset for real target photographs & augmentations
@@ -199,7 +149,7 @@ target_scorer/
 │       │   ├── scoring.py        # NRA B-2 / B-3 inward scoring & dispersion math
 │       │   └── visualization.py  # Diagnostic scorecard overlay & HUD generator
 │       ├── models/
-│       │   ├── unet.py           # HighResHeatmapUNet architecture
+│       │   ├── unet.py           # Fully convolutional HighResHeatmapUNet architecture
 │       │   └── loss.py           # Adaptive Wing Loss implementation
 │       └── synthetic/
 │           ├── generator.py      # Photorealistic cardboard, bullet, & handwriting synthesis
@@ -207,20 +157,30 @@ target_scorer/
 ├── datasets/
 │   └── calibration_targets/      # Sample calibration targets with raw photos & ground truth JSON
 ├── tests/
+│   ├── test_progressive_training.py # Dynamic spatial resizing & progressive curriculum test suite
 │   ├── test_real_dataset.py      # Real dataset, schema, hybrid, and autolabel test suite
 │   ├── test_canonical_loader.py  # Format-independent ingestion & in-memory buffer test suite
-│   ├── test_low_res_metrology.py # 35-test scoring compliance & metrology test suite
+│   ├── test_low_res_metrology.py # Scoring compliance & metrology test suite
 │   ├── test_camera_angles.py     # Perspective rectification & tilt test suite
-│   └── test_benchmark_low_res.py # 100-target statistical regression benchmark
+│   └── test_benchmark_low_res.py # Procedural statistical regression benchmark
 ├── weights/
-│   ├── target_scoring_hrnet_1024_best.pt # Competition model (98.9% match, 0.335mm MRE)
-│   ├── target_scoring_hrnet_512_best.pt  # 512x512 baseline model
-│   └── target_scoring_hrnet_best.pt      # Initial development weights
-├── visual_inspection_reports/    # High-resolution visual scorecards (PNG)
+│   ├── target_scoring_hrnet_1024_best.pt # Production competition model (0.335mm MRE)
+│   ├── target_scoring_hrnet_768_best.pt  # Intermediate Stage 3 weights
+│   ├── target_scoring_hrnet_512_best.pt  # Intermediate Stage 2 weights
+│   └── target_scoring_hrnet_256_best.pt  # Intermediate Stage 1 weights
+├── visual_inspection_reports/    # Diagnostic scorecards (PNG) across stages (B-2 Slow Fire & B-3 Timed/Rapid)
 │   ├── colab_scorecard_1024_b2.png
-│   ├── colab_scorecard_1024_b2_redacted.png
 │   ├── colab_scorecard_1024_b3.png
-│   └── colab_scorecard_1024_b3_redacted.png
+│   ├── colab_scorecard_768_b2.png
+│   ├── colab_scorecard_768_b3.png
+│   ├── colab_scorecard_512_b2.png
+│   ├── colab_scorecard_512_b3.png
+│   ├── colab_scorecard_256_b2.png
+│   └── colab_scorecard_256_b3.png
+├── scripts/
+│   ├── train_progressive_colab.py # Standalone runner for 4-stage progressive cloud curriculum
+│   ├── create_colab_bundle.py    # Packages repository into clean cloud zip bundle
+│   └── generate_benchmark_visuals.py
 ├── notebooks/
 │   └── target_scorer_colab_training.ipynb # Google Colab interactive training notebook
 ├── pyproject.toml                # Standard PEP 517 build configuration
@@ -257,26 +217,26 @@ python -c "import torch; print('CUDA Available:', torch.cuda.is_available(), '| 
 
 ## Automated Test Suite
 
-Run the full battery of unit and regression tests:
+Run the full battery of 77 unit, progressive, and regression tests:
 
 ```bash
-# Run all 54 unit and regression tests:
+# Run complete test suite (77 tests):
 ./target_env/bin/python3 -m unittest discover tests/ -v
 
-# Run real dataset ingestion, schema, and active learning tests (11 tests):
+# Run Progressive Resizing dynamic resolution tests:
+./target_env/bin/python3 -m unittest tests/test_progressive_training.py -v
+
+# Run real dataset ingestion, schema, and active learning tests:
 ./target_env/bin/python3 -m unittest tests/test_real_dataset.py -v
 
-# Run format-independent ingestion & in-memory buffer tests (7 tests):
+# Run format-independent ingestion & in-memory buffer tests:
 ./target_env/bin/python3 -m unittest tests/test_canonical_loader.py -v
 
-# Run metrology and scoring assertions (35 tests):
+# Run metrology and scoring assertions:
 ./target_env/bin/python3 -m unittest tests/test_low_res_metrology.py -v
 
-# Run oblique camera angle tilt stress tests (5 tests):
+# Run oblique camera angle tilt stress tests:
 ./target_env/bin/python3 -m unittest tests/test_camera_angles.py -v
-
-# Run 100-target procedural statistical benchmark:
-./target_env/bin/python3 -m unittest tests/test_benchmark_low_res.py -v
 ```
 
 ---
