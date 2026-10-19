@@ -1,0 +1,21 @@
+[run]
+source = src/target_scorer
+branch = True
+omit =
+    tests/*
+    scratch/*
+    target_env/*
+    scripts/*
+    setup.py
+
+[report]
+show_missing = True
+skip_covered = False
+precision = 1
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:

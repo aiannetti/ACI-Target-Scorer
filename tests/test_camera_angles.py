@@ -76,6 +76,41 @@ class TestTargetRectifier(unittest.TestCase):
             expected_area = math.pi * (expected_r ** 2)
             self.assertAlmostEqual(area, expected_area, delta=expected_area * 0.12)
 
+    def test_steep_camera_tilt_warning_triggered(self):
+        """GEO-06: Verifies camera angles > 48 deg (e.g. 52-56 deg) flag a descriptive steep warning without crashing."""
+        for tilt in [52.0, 56.0]:
+            raw_img = self._render_synthetic_ellipse(tilt_deg=tilt, roll_deg=0.0)
+            result = self.rectifier.process_raw_image(raw_img)
+
+            self.assertFalse(result.is_fallback, f"Should unwarp tilt={tilt} without falling back.")
+            self.assertAlmostEqual(result.tilt_angle_deg, tilt, delta=4.0)
+            self.assertIsNotNone(result.warning, "Warning message must be present for tilt > 48 deg.")
+            self.assertIn("Camera angle steep", result.warning)
+            self.assertEqual(result.canonical_crop.shape, (256, 256, 3))
+            self.assertIsNotNone(result.homography_matrix)
+
+    def test_extreme_degenerate_tilt_and_singular_collapse(self):
+        """GEO-07: Verifies extreme degenerate tilt (>75 deg or knife-edge collapse) degrades gracefully without singular crashes."""
+        # 1. 80-degree extreme projection
+        raw_img_80 = self._render_synthetic_ellipse(tilt_deg=80.0, roll_deg=0.0)
+        result_80 = self.rectifier.process_raw_image(raw_img_80)
+        self.assertEqual(result_80.canonical_crop.shape, (256, 256, 3))
+        self.assertIsNotNone(result_80.homography_matrix)
+
+        # 2. Near knife-edge ellipse (minor axis = 1 px, representing ~89 deg pitch)
+        img_knife = np.ones((800, 800, 3), dtype=np.uint8) * np.array([145, 180, 215], dtype=np.uint8)
+        cv2.ellipse(img_knife, (400, 400), (150, 1), 0, 0, 360, (30, 30, 35), -1)
+        result_knife = self.rectifier.process_raw_image(img_knife)
+        self.assertEqual(result_knife.canonical_crop.shape, (256, 256, 3))
+        self.assertTrue(result_knife.is_fallback)
+        self.assertIn("fallback", result_knife.warning.lower())
+
+        # 3. Degenerate blank image
+        img_blank = np.ones((800, 800, 3), dtype=np.uint8) * 255
+        result_blank = self.rectifier.process_raw_image(img_blank)
+        self.assertEqual(result_blank.canonical_crop.shape, (256, 256, 3))
+        self.assertTrue(result_blank.is_fallback)
+
 
 class TestMetrologyAndScoring(unittest.TestCase):
     def setUp(self):

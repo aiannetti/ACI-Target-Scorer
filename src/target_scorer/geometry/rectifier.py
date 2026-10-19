@@ -358,11 +358,12 @@ class TargetRectifier:
         raw_pixels_per_mm = a / self.nominal_radius_mm
         circularity = b / a
 
-        warning_msg = None
+        warning_msgs = []
         if blur_metric < self.min_blur_metric:
-            warning_msg = f"Target blurry (Var: {blur_metric:.1f} < {self.min_blur_metric}); steady phone."
-        elif tilt_angle_deg > self.max_tilt_deg:
-            warning_msg = f"Camera angle steep ({tilt_angle_deg:.1f} deg); hold camera flatter over target."
+            warning_msgs.append(f"Target blurry (Var: {blur_metric:.1f} < {self.min_blur_metric}); steady phone.")
+        if tilt_angle_deg > self.max_tilt_deg:
+            warning_msgs.append(f"Camera angle steep ({tilt_angle_deg:.1f} deg); hold camera flatter over target.")
+        warning_msg = " | ".join(warning_msgs) if warning_msgs else None
 
         return RectificationResult(
             canonical_crop=canonical_crop,

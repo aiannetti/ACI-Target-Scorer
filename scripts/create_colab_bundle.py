@@ -44,12 +44,14 @@ EXCLUDE_EXTS = {
 }
 
 
-def make_colab_bundle():
-    print(f"[*] Packaging project from '{PROJECT_ROOT}'...")
+def make_colab_bundle(output_path=None, project_root=None):
+    root_dir = os.path.abspath(project_root) if project_root else PROJECT_ROOT
+    target_zip = os.path.abspath(output_path) if output_path else OUTPUT_ZIP
+    print(f"[*] Packaging project from '{root_dir}'...")
     file_count = 0
 
-    with zipfile.ZipFile(OUTPUT_ZIP, "w", zipfile.ZIP_DEFLATED) as zf:
-        for root, dirs, files in os.walk(PROJECT_ROOT):
+    with zipfile.ZipFile(target_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+        for root, dirs, files in os.walk(root_dir):
             # Prune excluded directories in-place
             dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS and not d.endswith(".egg-info")]
 
@@ -59,18 +61,19 @@ def make_colab_bundle():
                     continue
 
                 abs_path = os.path.join(root, file)
-                rel_path = os.path.relpath(abs_path, PROJECT_ROOT)
+                rel_path = os.path.relpath(abs_path, root_dir)
 
                 # Prefix with target_scorer/ inside the archive
                 arcname = os.path.join("target_scorer", rel_path)
                 zf.write(abs_path, arcname)
                 file_count += 1
 
-    size_mb = os.path.getsize(OUTPUT_ZIP) / (1024 * 1024)
-    print(f"[✓] Created Colab archive: '{OUTPUT_ZIP}'")
+    size_mb = os.path.getsize(target_zip) / (1024 * 1024)
+    print(f"[✓] Created Colab archive: '{target_zip}'")
     print(f"    --> Total Files: {file_count}")
     print(f"    --> Archive Size: {size_mb:.2f} MB")
     print("[*] Ready for 1-click upload to Google Colab!")
+    return target_zip
 
 
 if __name__ == "__main__":

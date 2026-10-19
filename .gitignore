@@ -48,3 +48,8 @@ autolabeled_photos/
 # Bundles & Archives
 *.zip
 *.tar.gz
+
+# Coverage reports
+.coverage
+.coverage.*
+htmlcov/
