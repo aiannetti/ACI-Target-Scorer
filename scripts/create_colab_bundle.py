@@ -31,6 +31,7 @@ EXCLUDE_DIRS = {
     "autolabeled_photos",
     "samples",
     "docs",
+    "scratch",
 }
 
 EXCLUDE_EXTS = {
