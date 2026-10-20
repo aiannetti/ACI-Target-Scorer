@@ -1014,7 +1014,6 @@ class AnnotationEditor(tk.Tk):
         candidates = [
             json_dir / ann.image_filename,
             json_dir / f"{ann.target_id}_canonical.png",
-            json_dir / f"{ann.target_id}_review.png",
             json_dir.parent / "canonical_1024" / ann.image_filename,
             json_dir.parent / "images" / ann.image_filename,
             json_dir.parent / "canonical" / ann.image_filename,
@@ -1793,7 +1792,7 @@ class AnnotationEditor(tk.Tk):
         if self.copy_on_save_var.get():
             dest_str = self.copy_dir_var.get().strip()
             if dest_str:
-                dest_dir = Path(dest_str)
+                dest_dir = Path(os.path.expanduser(dest_str))
                 try:
                     copied_items = self._copy_target_to_directory(
                         dest_dir=dest_dir,

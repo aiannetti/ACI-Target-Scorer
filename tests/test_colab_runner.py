@@ -22,6 +22,7 @@ from target_scorer.colab_runner import (
     get_colab_bin,
     get_session_url,
     list_colab_sessions,
+    package_real_dataset_bundle,
     stop_colab_session,
 )
 from target_scorer.train import parse_progressive_stages
@@ -107,6 +108,37 @@ class TestColabPackaging(unittest.TestCase):
         """Verifies that EXCLUDE_DIRS and EXCLUDE_EXTS cover critical space-consuming folders."""
         for required_dir in ["range_photos", "autolabeled_photos", ".git", "target_env", "weights", "__pycache__"]:
             self.assertIn(required_dir, EXCLUDE_DIRS)
+
+    def test_package_real_dataset_bundle(self):
+        """Verifies packaging real target dataset includes canonical and json while excluding raw and review."""
+        dataset_dir = os.path.join(self.temp_dir, "real_dataset")
+        os.makedirs(os.path.join(dataset_dir, "B-2", "canonical_1024"), exist_ok=True)
+        os.makedirs(os.path.join(dataset_dir, "B-2", "annotations"), exist_ok=True)
+        os.makedirs(os.path.join(dataset_dir, "B-2", "raw"), exist_ok=True)
+
+        with open(os.path.join(dataset_dir, "B-2", "canonical_1024", "target_01_canonical.png"), "w") as f:
+            f.write("canonical png data")
+        with open(os.path.join(dataset_dir, "B-2", "annotations", "target_01.json"), "w") as f:
+            f.write('{"target_id": "target_01"}')
+
+        with open(os.path.join(dataset_dir, "B-2", "raw", "target_01.jpg"), "w") as f:
+            f.write("heavy raw photo")
+        with open(os.path.join(dataset_dir, "B-2", "canonical_1024", "target_01_review.png"), "w") as f:
+            f.write("review card png data")
+        with open(os.path.join(dataset_dir, "B-2", "target_01.dng"), "w") as f:
+            f.write("dng raw camera file")
+
+        zip_out = os.path.join(self.temp_dir, "dataset_bundle.zip")
+        package_real_dataset_bundle(dataset_dir, zip_out)
+        self.assertTrue(os.path.exists(zip_out))
+
+        with zipfile.ZipFile(zip_out, "r") as zf:
+            names = zf.namelist()
+            self.assertIn("B-2/canonical_1024/target_01_canonical.png", names)
+            self.assertIn("B-2/annotations/target_01.json", names)
+            self.assertFalse(any("raw" in n for n in names))
+            self.assertFalse(any(n.endswith("_review.png") for n in names))
+            self.assertFalse(any(n.endswith(".dng") for n in names))
 
         for required_ext in [".pyc", ".pt", ".pth", ".tmp"]:
             self.assertIn(required_ext, EXCLUDE_EXTS)

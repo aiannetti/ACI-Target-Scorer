@@ -37,7 +37,7 @@ class TestCLIDispatcher(unittest.TestCase):
                 self.assertEqual(cm.exception.code, 1)
 
     def test_cli_subcommand_forwarding(self):
-        """Verifies rectify --help dispatches properly."""
+        """Verifies rectify and annotate --help dispatch properly."""
         with patch.object(sys, "argv", ["target-scorer", "rectify", "--help"]):
             with patch("sys.stdout", new=StringIO()) as fake_out:
                 with self.assertRaises(SystemExit) as cm:
@@ -45,6 +45,15 @@ class TestCLIDispatcher(unittest.TestCase):
                 self.assertEqual(cm.exception.code, 0)
                 output = fake_out.getvalue()
                 self.assertIn("--image", output)
+                self.assertIn("--target", output)
+
+        with patch.object(sys, "argv", ["target-scorer", "annotate", "--help"]):
+            with patch("sys.stdout", new=StringIO()) as fake_out:
+                with self.assertRaises(SystemExit) as cm:
+                    cli_main()
+                self.assertEqual(cm.exception.code, 0)
+                output = fake_out.getvalue()
+                self.assertIn("--copy-to-dir", output)
                 self.assertIn("--target", output)
 
 

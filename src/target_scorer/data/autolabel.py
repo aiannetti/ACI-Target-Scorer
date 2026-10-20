@@ -185,6 +185,19 @@ def autolabel_target_image(
             confidence=float(peak[2])
         ))
 
+    metadata = {
+        "autolabeled": True,
+        "redact_pii": redact_pii,
+        "total_score": group_metrics.total_score,
+        "x_count": group_metrics.x_count,
+        "extreme_spread_mm": round(group_metrics.extreme_spread_mm, 2),
+        "mean_radius_mm": round(group_metrics.mean_radius_mm, 2),
+        "source_blur": round(rect_result.blur_metric, 1),
+        "source_tilt": round(rect_result.tilt_angle_deg, 1),
+    }
+    if isinstance(image_source, (str, Path)) and str(image_source) != "-":
+        metadata["source_image"] = str(Path(image_source).resolve())
+
     # 3. Save JSON annotation
     ann = TargetAnnotation(
         target_id=target_id,
@@ -194,16 +207,7 @@ def autolabel_target_image(
         shots=annotated_shots,
         canvas_size=canvas_size,
         pixels_per_mm=pixels_per_mm,
-        metadata={
-            "autolabeled": True,
-            "redact_pii": redact_pii,
-            "total_score": group_metrics.total_score,
-            "x_count": group_metrics.x_count,
-            "extreme_spread_mm": round(group_metrics.extreme_spread_mm, 2),
-            "mean_radius_mm": round(group_metrics.mean_radius_mm, 2),
-            "source_blur": round(rect_result.blur_metric, 1),
-            "source_tilt": round(rect_result.tilt_angle_deg, 1),
-        }
+        metadata=metadata
     )
     json_path = out_dir / f"{target_id}.json"
     ann.to_json(json_path)

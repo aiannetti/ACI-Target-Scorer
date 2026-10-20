@@ -17,6 +17,7 @@ This document details the engineering principles, mathematical formulations, coo
 10. [Metrology, Coordinate Systems, & Inward Scoring Math](#10-metrology-coordinate-systems--inward-scoring-math)
 11. [Robustness, Input Validation, & Channel Normalization](#11-robustness-input-validation--channel-normalization)
 12. [TargetAnnotation JSON Schema & Data Model](#12-targetannotation-json-schema--data-model)
+13. [Desktop Metrology GUI & Sun Valley Design System](#13-desktop-metrology-gui--sun-valley-design-system)
 
 ---
 
@@ -415,3 +416,30 @@ Annotations are serialized into human-readable JSON files adhering to standard p
 ### Python Data Classes:
 * **[`AnnotatedShot`](file:///home/antho/target_scorer/src/target_scorer/data/schema.py#L14-L41):** Individual shot record. Includes sub-pixel coordinates, score, inner-X flag, bullet caliber, impact type (`single`, `double`, `keyhole`), and detection confidence.
 * **[`TargetAnnotation`](file:///home/antho/target_scorer/src/target_scorer/data/schema.py#L43-L133):** Root card container. Includes target type, canonical canvas dimensions, scale factor, list of shots, bullseye coordinates, and flexible metadata dictionary. Provides `.to_json()` and `.from_json()` serialization methods.
+
+---
+
+## 13. Desktop Metrology GUI & Sun Valley Design System
+
+Source: [`src/target_scorer/gui/annotation_editor.py`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py)
+
+The desktop application provides an interactive metrology workstation engineered for active learning, precision validation, and competition review.
+
+### A. Sun Valley (`sv-ttk`) Modernization & Theme Engine
+The interface implements the Fluent Design-inspired Sun Valley theme via [`sv_ttk`](https://github.com/rdbende/Sun-Valley-ttk-theme):
+* **Dynamic Dark/Light Mode Toggling:** Supports instant theme switching at runtime via `Ctrl+T` or `F10` hotkeys, with automatic dynamic styling adaptation for nested widgets and custom canvas elements.
+* **Modern Switch & Accent Styling:** Uses styled `Switch.TCheckbutton` toggles for overlay activation and `Accent.TButton` widgets for primary user callouts (e.g. Save).
+* **High-DPI Display Support:** Dynamically queries screen DPI (`tk.call('tk', 'scaling')`) and applies proportional font scaling to maintain legibility on 4K/high-density monitors.
+
+### B. Coordinate Space Transformations
+The GUI manages three distinct coordinate systems:
+1. **Canonical Metric Space (Target Space):** Continuous coordinates $(x_c, y_c) \in [0, 1024] \times [0, 1024]$ where $4.0\text{ px} = 1.0\text{ mm}$. All mathematical scoring, group dispersion, and JSON serialization occurs strictly in this domain.
+2. **Viewport Pan/Zoom Space (Canvas Space):** Screen pixel coordinates transformed by scale factor $S \in [0.20, 12.00]$ and origin offsets $(O_x, O_y)$:
+   $$x_{\text{canvas}} = x_c \times S + O_x, \quad y_{\text{canvas}} = y_c \times S + O_y$$
+3. **Loupe Sub-Pixel Metrology Space:** High-magnification ($16\times$) localized patch view with sub-pixel interpolation, millimeter ring guides, and flange tangency rings for contentious scoring calls.
+
+### C. Asset Synchronization & Copy-On-Save Pipeline
+When verifying real-world target sets, the editor features an automated `copy-on-save` synchronization pipeline:
+* **User Path Expansion:** Automatically parses relative and tilde (`~`) paths (e.g., `~/datasets/real_targets`).
+* **Multi-Format Raw Resolution:** Resolves raw smartphone photographs (`.jpg`, `.jpeg`, `.png`, `.heic`, `.dng`, `.nef`, `.cr2`) using embedded annotation metadata or cross-directory heuristic search.
+* **Strict Artifact Segregation:** Automatically synchronizes `canonical_1024/`, `annotations/`, and `raw/` subdirectories while strictly isolating burnt-in HUD review cards (`*_review.png`) to avoid polluting clean model inputs.
