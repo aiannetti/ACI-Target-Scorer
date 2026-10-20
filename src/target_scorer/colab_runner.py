@@ -66,8 +66,9 @@ def package_real_dataset_bundle(real_data_dir: str, output_zip_path: str) -> Non
     """
     Packages annotated real target dataset for cloud training.
     Includes canonical images (*_canonical.png), annotations (*.json), and manifests.
-    Excludes raw un-rectified camera photos ('raw/' subdirectories and heavy camera formats)
-    to minimize cloud upload bandwidth and transfer times.
+    Excludes raw camera photos ('raw/' subdirectories and heavy camera formats)
+    as well as verification review cards (*_review.png) to minimize cloud upload bandwidth
+    and transfer times.
     """
     import zipfile
     with zipfile.ZipFile(output_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -75,7 +76,7 @@ def package_real_dataset_bundle(real_data_dir: str, output_zip_path: str) -> Non
             dirs[:] = [d for d in dirs if d != "raw" and d != "__pycache__"]
             for file in files:
                 ext = os.path.splitext(file)[1].lower()
-                if ext in (".raw", ".nef", ".cr2", ".dng", ".arw"):
+                if ext in (".raw", ".nef", ".cr2", ".dng", ".arw") or file.endswith("_review.png"):
                     continue
                 abs_p = os.path.join(root, file)
                 rel_p = os.path.relpath(abs_p, real_data_dir)

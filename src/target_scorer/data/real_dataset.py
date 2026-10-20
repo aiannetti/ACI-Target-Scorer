@@ -81,7 +81,7 @@ class RealTargetDataset(Dataset):
                 if img_name and ann_name:
                     img_p = self.images_dir / img_name
                     ann_p = self.annotations_dir / ann_name
-                    if img_p.exists() and ann_p.exists():
+                    if img_p.exists() and ann_p.exists() and not img_p.name.endswith("_review.png"):
                         self.samples.append({"image": img_p, "annotation": ann_p})
 
         # 2. If no manifest or empty, scan annotations directory and data directory
@@ -105,11 +105,11 @@ class RealTargetDataset(Dataset):
                             pass
 
                         # Check possible image locations across flat, structured, and nested subdirectories
+                        # (Note: *_review.png cards with visual overlays and HUD graphics are strictly excluded)
                         possible_img_paths = [
                             ann_p.parent / ann.image_filename,
                             ann_p.parent / f"{ann.target_id}_canonical.png",
                             ann_p.parent / f"{ann.target_id}.png",
-                            ann_p.parent / f"{ann.target_id}_review.png",
                             self.images_dir / rel_sub / ann.image_filename,
                             self.images_dir / rel_sub / f"{ann.target_id}_canonical.png",
                             self.images_dir / ann.image_filename,
@@ -126,7 +126,7 @@ class RealTargetDataset(Dataset):
                             ann_p.parent.parent / ann.image_filename,
                         ]
                         for img_p in possible_img_paths:
-                            if img_p.exists() and img_p.is_file():
+                            if img_p.exists() and img_p.is_file() and not img_p.name.endswith("_review.png"):
                                 self.samples.append({"image": img_p, "annotation": ann_p})
                                 break
                     except Exception:

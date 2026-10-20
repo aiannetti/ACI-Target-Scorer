@@ -293,6 +293,38 @@ class TestRealTargetDataset(unittest.TestCase):
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
+    def test_review_cards_are_strictly_excluded(self):
+        """Verifies that RealTargetDataset strictly avoids loading *_review.png files."""
+        import tempfile
+        import cv2
+
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            (tmp_dir / "targets").mkdir(parents=True)
+            ann = TargetAnnotation(
+                target_id="target_rev_test",
+                image_filename="target_rev_test_canonical.png",
+                canvas_size=256,
+                pixels_per_mm=2.0,
+                target_type="B-2",
+                bullseye_center=(128.0, 128.0),
+                shots=[],
+            )
+            ann.to_json(tmp_dir / "targets" / "target_rev_test.json")
+            # Canonical image exists
+            cv2.imwrite(str(tmp_dir / "targets" / "target_rev_test_canonical.png"), np.full((256, 256, 3), 200, dtype=np.uint8))
+            # Review card with HUD overlays also exists alongside it
+            cv2.imwrite(str(tmp_dir / "targets" / "target_rev_test_review.png"), np.full((256, 256, 3), 50, dtype=np.uint8))
+
+            dataset = RealTargetDataset(data_dir=tmp_dir, config=self.config, is_train=False)
+            self.assertEqual(len(dataset.samples), 1)
+            # Ensure the selected image is canonical, NOT review
+            loaded_img_path = dataset.samples[0]["image"]
+            self.assertTrue(loaded_img_path.name.endswith("_canonical.png"))
+            self.assertFalse(loaded_img_path.name.endswith("_review.png"))
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
 
 class TestHybridTargetDataset(unittest.TestCase):
     """Tests for HybridTargetDataset blending synthetic and real datasets."""
