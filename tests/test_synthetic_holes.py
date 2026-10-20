@@ -4,6 +4,7 @@ and handwriting / scorer markings retention.
 """
 
 import unittest
+import random
 import numpy as np
 import cv2
 
@@ -103,6 +104,8 @@ class TestSyntheticHolesAndMarkings(unittest.TestCase):
     def test_stratified_4zone_shot_placement(self):
         """Verifies synthetic generation places shots across all 4 physical zones."""
         import math
+        random.seed(42)
+        np.random.seed(42)
         cfg = TargetConfig(canvas_size=1024, pixels_per_mm=4.0, target_type="B-2")
         bull_center = (512.0, 512.0)
         r_bull = 38.989 * 4.0   # ~156 px
