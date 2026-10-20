@@ -235,6 +235,64 @@ class TestRealTargetDataset(unittest.TestCase):
             dist_to_hmap = np.hypot(x_peak - bull[0], y_peak - bull[1])
             self.assertLess(dist_to_hmap, 3.0, f"Heatmap peak ({x_peak}, {y_peak}) diverged from bullseye ({bull[0]}, {bull[1]})")
 
+    def test_nested_subdirectories_discovery(self):
+        """Verifies RealTargetDataset discovers annotations and images across multiple subfolder layouts."""
+        import tempfile
+        import cv2
+
+        tmp_dir = Path(tempfile.mkdtemp())
+        try:
+            # Layout 1: Flat subfolder by target type (tmp/B-2/target_001.{json,png})
+            (tmp_dir / "B-2").mkdir(parents=True)
+            ann1 = TargetAnnotation(
+                target_id="b2_shot_01",
+                image_filename="b2_shot_01_canonical.png",
+                canvas_size=256,
+                pixels_per_mm=2.0,
+                target_type="B-2",
+                bullseye_center=(128.0, 128.0),
+                shots=[],
+            )
+            ann1.to_json(tmp_dir / "B-2" / "b2_shot_01.json")
+            cv2.imwrite(str(tmp_dir / "B-2" / "b2_shot_01_canonical.png"), np.full((256, 256, 3), 200, dtype=np.uint8))
+
+            # Layout 2: Subfolder with internal annotations/canonical_1024
+            (tmp_dir / "B-3" / "annotations").mkdir(parents=True)
+            (tmp_dir / "B-3" / "canonical_1024").mkdir(parents=True)
+            ann2 = TargetAnnotation(
+                target_id="b3_shot_02",
+                image_filename="b3_shot_02_canonical.png",
+                canvas_size=256,
+                pixels_per_mm=2.0,
+                target_type="B-3",
+                bullseye_center=(128.0, 128.0),
+                shots=[],
+            )
+            ann2.to_json(tmp_dir / "B-3" / "annotations" / "b3_shot_02.json")
+            cv2.imwrite(str(tmp_dir / "B-3" / "canonical_1024" / "b3_shot_02_canonical.png"), np.full((256, 256, 3), 200, dtype=np.uint8))
+
+            # Layout 3: Top-level annotations and canonical_1024 with nested subfolders
+            (tmp_dir / "annotations" / "match_2026").mkdir(parents=True)
+            (tmp_dir / "canonical_1024" / "match_2026").mkdir(parents=True)
+            ann3 = TargetAnnotation(
+                target_id="match_shot_03",
+                image_filename="match_shot_03_canonical.png",
+                canvas_size=256,
+                pixels_per_mm=2.0,
+                target_type="B-2",
+                bullseye_center=(128.0, 128.0),
+                shots=[],
+            )
+            ann3.to_json(tmp_dir / "annotations" / "match_2026" / "match_shot_03.json")
+            cv2.imwrite(str(tmp_dir / "canonical_1024" / "match_2026" / "match_shot_03_canonical.png"), np.full((256, 256, 3), 200, dtype=np.uint8))
+
+            dataset = RealTargetDataset(data_dir=tmp_dir, config=self.config, is_train=False)
+            self.assertEqual(len(dataset.samples), 3)
+            ids = {s["annotation"].stem for s in dataset.samples}
+            self.assertEqual(ids, {"b2_shot_01", "b3_shot_02", "match_shot_03"})
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
 
 class TestHybridTargetDataset(unittest.TestCase):
     """Tests for HybridTargetDataset blending synthetic and real datasets."""

@@ -84,31 +84,53 @@ class RealTargetDataset(Dataset):
                     if img_p.exists() and ann_p.exists():
                         self.samples.append({"image": img_p, "annotation": ann_p})
 
-        # 2. If no manifest or empty, scan annotations directory
+        # 2. If no manifest or empty, scan annotations directory and data directory
         if not self.samples:
-            ann_files = list(self.annotations_dir.rglob("*.json"))
-            for ann_p in sorted(ann_files):
-                if ann_p.name == "manifest.json":
-                    continue
-                try:
-                    ann = TargetAnnotation.from_json(ann_p)
-                    # Check possible image locations
-                    possible_img_paths = [
-                        ann_p.parent / ann.image_filename,
-                        ann_p.parent / f"{ann.target_id}_canonical.png",
-                        ann_p.parent / f"{ann.target_id}.png",
-                        self.images_dir / ann.image_filename,
-                        self.data_dir / "canonical_1024" / ann.image_filename,
-                        self.data_dir / "images" / ann.image_filename,
-                        self.annotations_dir.parent / "canonical_1024" / ann.image_filename,
-                        self.annotations_dir.parent / "images" / ann.image_filename,
-                    ]
-                    for img_p in possible_img_paths:
-                        if img_p.exists() and img_p.is_file():
-                            self.samples.append({"image": img_p, "annotation": ann_p})
-                            break
-                except Exception:
-                    continue
+            search_dirs = [self.annotations_dir]
+            if self.data_dir != self.annotations_dir:
+                search_dirs.append(self.data_dir)
+
+            seen_anns = set()
+            for s_dir in search_dirs:
+                for ann_p in sorted(s_dir.rglob("*.json")):
+                    if ann_p in seen_anns or ann_p.name == "manifest.json":
+                        continue
+                    seen_anns.add(ann_p)
+                    try:
+                        ann = TargetAnnotation.from_json(ann_p)
+                        rel_sub = ""
+                        try:
+                            rel_sub = ann_p.relative_to(s_dir).parent
+                        except ValueError:
+                            pass
+
+                        # Check possible image locations across flat, structured, and nested subdirectories
+                        possible_img_paths = [
+                            ann_p.parent / ann.image_filename,
+                            ann_p.parent / f"{ann.target_id}_canonical.png",
+                            ann_p.parent / f"{ann.target_id}.png",
+                            ann_p.parent / f"{ann.target_id}_review.png",
+                            self.images_dir / rel_sub / ann.image_filename,
+                            self.images_dir / rel_sub / f"{ann.target_id}_canonical.png",
+                            self.images_dir / ann.image_filename,
+                            self.images_dir / f"{ann.target_id}_canonical.png",
+                            self.data_dir / "canonical_1024" / rel_sub / ann.image_filename,
+                            self.data_dir / "images" / rel_sub / ann.image_filename,
+                            self.data_dir / "canonical_1024" / ann.image_filename,
+                            self.data_dir / "images" / ann.image_filename,
+                            self.annotations_dir.parent / "canonical_1024" / ann.image_filename,
+                            self.annotations_dir.parent / "images" / ann.image_filename,
+                            ann_p.parent.parent / "canonical_1024" / ann.image_filename,
+                            ann_p.parent.parent / "canonical_1024" / f"{ann.target_id}_canonical.png",
+                            ann_p.parent.parent / "images" / ann.image_filename,
+                            ann_p.parent.parent / ann.image_filename,
+                        ]
+                        for img_p in possible_img_paths:
+                            if img_p.exists() and img_p.is_file():
+                                self.samples.append({"image": img_p, "annotation": ann_p})
+                                break
+                    except Exception:
+                        continue
 
     def __len__(self) -> int:
         return self.virtual_size
