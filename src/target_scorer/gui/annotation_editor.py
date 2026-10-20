@@ -7,6 +7,7 @@ import copy
 import json
 import math
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -391,7 +392,12 @@ class AnnotationEditor(tk.Tk):
     bullet hole markers on autolabeled target cards, with real-time NRA metrology re-scoring.
     """
 
-    def __init__(self, target_dir_or_file: Optional[Union[str, Path]] = None, target_type_override: Optional[str] = None):
+    def __init__(
+        self,
+        target_dir_or_file: Optional[Union[str, Path]] = None,
+        target_type_override: Optional[str] = None,
+        copy_to_dir: Optional[Union[str, Path]] = None,
+    ):
         super().__init__()
 
         self.title("Target Scorer - Interactive Shot Annotation & Metrology Editor")
@@ -406,6 +412,7 @@ class AnnotationEditor(tk.Tk):
 
         # State
         self.target_type_override = target_type_override
+        self.copy_to_dir_init = Path(copy_to_dir) if copy_to_dir else None
         self.json_files: List[Path] = []
         self.current_idx: int = -1
         self.current_json_path: Optional[Path] = None
@@ -441,11 +448,16 @@ class AnnotationEditor(tk.Tk):
         self.eagle_eye_dialog: Optional[EagleEyeLoupe] = None
         self._suppress_tree_events: bool = False
 
-        # Modes: 'shot' (add/move shots), 'bullseye' (move bullseye)
+        # Modes & Display Toggles
         self.edit_mode_var = tk.StringVar(value="shot")
         self.show_rings_var = tk.BooleanVar(value=True)
         self.show_spread_var = tk.BooleanVar(value=True)
         self.show_badges_var = tk.BooleanVar(value=True)
+
+        # Export on Save settings
+        self.copy_on_save_var = tk.BooleanVar(value=bool(copy_to_dir))
+        default_dest = str(copy_to_dir) if copy_to_dir else "datasets/real_targets"
+        self.copy_dir_var = tk.StringVar(value=default_dest)
 
         self._build_ui()
         self._bind_shortcuts()
@@ -510,6 +522,15 @@ class AnnotationEditor(tk.Tk):
         self.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
         self.style.configure("TCheckbutton", background=dark_bg, foreground=text_fg)
         self.style.configure("TRadiobutton", background=dark_bg, foreground=text_fg)
+        self.style.configure(
+            "TEntry",
+            fieldbackground="#2b2d38",
+            background="#2b2d38",
+            foreground="#f0f2f5",
+            insertcolor="#f0f2f5",
+            bordercolor="#444654",
+            padding=(6, 3)
+        )
 
         self.style.configure("Treeview", background="#22232a", foreground=text_fg, fieldbackground="#22232a", rowheight=24)
         self.style.map("Treeview", background=[("selected", "#005a9e")], foreground=[("selected", "#ffffff")])
@@ -564,6 +585,39 @@ class AnnotationEditor(tk.Tk):
 
         btn_clear = ttk.Button(top_bar, text="✕ Clear Shots", style="Danger.TButton", command=self.on_clear_shots)
         btn_clear.pack(side=tk.RIGHT, padx=4)
+
+        # 1b. Export / Copy on Save Bar
+        export_bar = ttk.Frame(self, padding=(10, 3))
+        export_bar.pack(side=tk.TOP, fill=tk.X)
+
+        cb_copy = ttk.Checkbutton(
+            export_bar,
+            text="Copy on Save to directory:",
+            variable=self.copy_on_save_var
+        )
+        cb_copy.pack(side=tk.LEFT, padx=(0, 6))
+
+        self.entry_copy_dir = ttk.Entry(
+            export_bar,
+            textvariable=self.copy_dir_var,
+            width=55
+        )
+        self.entry_copy_dir.pack(side=tk.LEFT, padx=(0, 6))
+
+        btn_browse_copy = ttk.Button(
+            export_bar,
+            text="📁 Browse Destination...",
+            command=self.on_browse_copy_dir
+        )
+        btn_browse_copy.pack(side=tk.LEFT, padx=(0, 10))
+
+        lbl_hint = ttk.Label(
+            export_bar,
+            text="(copies .json, canonical image, raw photo, and review card)",
+            foreground="#858999",
+            font=("Segoe UI", 8)
+        )
+        lbl_hint.pack(side=tk.LEFT)
 
         # 2. Main Middle Area (Canvas + Sidebar HUD)
         middle_paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
@@ -862,6 +916,59 @@ class AnnotationEditor(tk.Tk):
         for c in candidates:
             if c.exists() and c.is_file():
                 return c
+        return None
+
+    def _resolve_raw_image_path(self, json_p: Path, ann: TargetAnnotation) -> Optional[Path]:
+        """
+        Locates the original un-rectified raw photograph or scan for the target.
+        Searches metadata, sibling raw/ directories, and range_photos/ archives.
+        """
+        # 1. Metadata attributes
+        if ann.metadata:
+            for key in ("raw_image", "source_image", "raw_path", "image_source"):
+                raw_val = ann.metadata.get(key)
+                if raw_val:
+                    p = Path(raw_val)
+                    if p.is_file():
+                        return p
+                    if (json_p.parent / p).is_file():
+                        return json_p.parent / p
+                    if (json_p.parent / p.name).is_file():
+                        return json_p.parent / p.name
+
+        # 2. Search common raw directory patterns
+        target_id = ann.target_id
+        base_stems = [target_id, target_id.replace("_canonical", "")]
+        extensions = [".jpg", ".JPG", ".jpeg", ".JPEG", ".png", ".PNG", ".tif", ".tiff", ".TIFF", ".heic", ".HEIC", ".raw", ".dng"]
+
+        search_dirs = [
+            json_p.parent,
+            json_p.parent / "raw",
+            json_p.parent.parent / "raw",
+            json_p.parent.parent.parent / "raw",
+            Path("range_photos") / ann.target_type / "JPEG",
+            Path("range_photos") / ann.target_type,
+            Path("range_photos"),
+            Path("datasets/real_targets/raw"),
+            Path("datasets/calibration_targets/raw"),
+        ]
+
+        for s_dir in search_dirs:
+            if s_dir.exists():
+                for stem in base_stems:
+                    for suffix in ("", "_raw", "_raw_photo"):
+                        for ext in extensions:
+                            cand = s_dir / f"{stem}{suffix}{ext}"
+                            if cand.exists() and cand.is_file():
+                                return cand
+
+        # 3. Fallback: fuzzy prefix search in raw directories
+        for s_dir in [json_p.parent / "raw", json_p.parent.parent / "raw", Path("range_photos")]:
+            if s_dir.exists():
+                for f in s_dir.rglob("*"):
+                    if f.is_file() and any(f.stem.startswith(s) for s in base_stems) and f.suffix.lower() in extensions:
+                        return f
+
         return None
 
     def _update_caliber_combobox(self):
@@ -1431,6 +1538,90 @@ class AnnotationEditor(tk.Tk):
             finally:
                 self._suppress_tree_events = False
 
+    def on_browse_copy_dir(self):
+        current_dir = self.copy_dir_var.get().strip() or os.getcwd()
+        selected = filedialog.askdirectory(
+            title="Select Destination Directory to Copy Saved Targets",
+            initialdir=current_dir,
+            parent=self
+        )
+        if selected:
+            self.copy_dir_var.set(selected)
+            self.copy_on_save_var.set(True)
+
+    def _copy_target_to_directory(
+        self,
+        dest_dir: Path,
+        updated_ann: TargetAnnotation,
+        json_p: Path,
+        review_p: Path
+    ) -> List[str]:
+        """
+        Copies raw photo, canonical image, annotation JSON, and review card to destination directory.
+        Respects existing structured subfolders (annotations/, canonical_1024/, raw/) if present.
+        Returns list of copied asset names for status reporting.
+        """
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        copied_assets: List[str] = []
+
+        # Determine if destination uses structured subfolders
+        has_subfolders = (dest_dir / "annotations").is_dir() or (dest_dir / "canonical_1024").is_dir()
+
+        if has_subfolders:
+            ann_dest = dest_dir / "annotations" / json_p.name
+            canon_dest = dest_dir / "canonical_1024" / f"{updated_ann.target_id}_canonical.png"
+            review_dest = dest_dir / "canonical_1024" / f"{updated_ann.target_id}_review.png"
+            raw_dest_dir = dest_dir / "raw"
+        else:
+            ann_dest = dest_dir / json_p.name
+            canon_dest = dest_dir / f"{updated_ann.target_id}_canonical.png"
+            review_dest = dest_dir / f"{updated_ann.target_id}_review.png"
+            raw_dest_dir = dest_dir / "raw" if (dest_dir / "raw").is_dir() else dest_dir
+
+        ann_dest.parent.mkdir(parents=True, exist_ok=True)
+        canon_dest.parent.mkdir(parents=True, exist_ok=True)
+        review_dest.parent.mkdir(parents=True, exist_ok=True)
+        raw_dest_dir.mkdir(parents=True, exist_ok=True)
+
+        # 1. Copy / save updated annotation JSON
+        if json_p.resolve() != ann_dest.resolve():
+            updated_ann.to_json(ann_dest)
+        copied_assets.append("JSON")
+
+        # 2. Copy canonical image
+        canon_src = self._resolve_canonical_image_path(json_p, updated_ann)
+        if canon_src and canon_src.exists():
+            if canon_src.resolve() != canon_dest.resolve():
+                shutil.copy2(canon_src, canon_dest)
+            copied_assets.append("Canonical")
+        elif self.canonical_cv2 is not None:
+            cv2.imwrite(str(canon_dest), self.canonical_cv2)
+            copied_assets.append("Canonical")
+
+        # 3. Copy raw photo (if found)
+        raw_src = self._resolve_raw_image_path(json_p, updated_ann)
+        if raw_src and raw_src.exists():
+            dest_raw_path = raw_dest_dir / raw_src.name
+            if raw_src.resolve() != dest_raw_path.resolve():
+                shutil.copy2(raw_src, dest_raw_path)
+            copied_assets.append(f"Raw ({raw_src.name})")
+
+        # 4. Copy review card (if generated)
+        if review_p.exists():
+            if review_p.resolve() != review_dest.resolve():
+                shutil.copy2(review_p, review_dest)
+            copied_assets.append("Review")
+        elif self.canonical_cv2 is not None:
+            render_review_card(
+                canonical_bgr=self.canonical_cv2,
+                annotation=updated_ann,
+                output_path=review_dest,
+                redact_pii=updated_ann.metadata.get("redact_pii", False)
+            )
+            copied_assets.append("Review")
+
+        return copied_assets
+
     # =========================================================================
     # Saving to JSON and Updating Review Card
     # =========================================================================
@@ -1488,15 +1679,40 @@ class AnnotationEditor(tk.Tk):
                 redact_pii=self.current_ann.metadata.get("redact_pii", False)
             )
 
+        # 3. Optional copy to destination directory
+        copy_msg = ""
+        if self.copy_on_save_var.get():
+            dest_str = self.copy_dir_var.get().strip()
+            if dest_str:
+                dest_dir = Path(dest_str)
+                try:
+                    copied_items = self._copy_target_to_directory(
+                        dest_dir=dest_dir,
+                        updated_ann=updated_ann,
+                        json_p=self.current_json_path,
+                        review_p=review_path
+                    )
+                    copy_msg = f" | Copied {', '.join(copied_items)} -> '{dest_dir.name}'"
+                except Exception as e:
+                    copy_msg = f" | [!] Copy failed: {e}"
+
         self.is_modified = False
         self.lbl_save_status.config(text=f"✓ Saved ({len(new_shots)} shots)", foreground="#00ff78")
-        self.lbl_status_msg.config(text=f"Successfully saved '{self.current_json_path.name}' and updated review card.")
+        self.lbl_status_msg.config(text=f"Successfully saved '{self.current_json_path.name}' and updated review card.{copy_msg}")
 
 
-def launch_annotation_editor(target_path: Optional[Union[str, Path]] = None, target_type: Optional[str] = None):
+def launch_annotation_editor(
+    target_path: Optional[Union[str, Path]] = None,
+    target_type: Optional[str] = None,
+    copy_to_dir: Optional[Union[str, Path]] = None
+):
     """Entry point for running the Annotation Editor GUI."""
     try:
-        app = AnnotationEditor(target_dir_or_file=target_path, target_type_override=target_type)
+        app = AnnotationEditor(
+            target_dir_or_file=target_path,
+            target_type_override=target_type,
+            copy_to_dir=copy_to_dir
+        )
         app.mainloop()
     except tk.TclError as e:
         if "display" in str(e).lower():

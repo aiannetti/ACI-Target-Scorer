@@ -354,6 +354,7 @@ target-scorer annotate [PATH] [OPTIONS]
 | `path` | `str` (positional) | `None` | Path to directory containing JSON annotations (or single JSON file). |
 | `--dir` | `str` | `None` | Optional explicit flag for annotation directory path. |
 | `--target` | `str` | `None` (auto) | Override NRA target type: `B-2` or `B-3`. If omitted, read from JSON metadata. |
+| `--copy-to-dir` | `str` | `None` | Optional destination directory to copy raw photo, canonical image, and updated annotation JSON to on Save. |
 
 ---
 

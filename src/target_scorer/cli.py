@@ -166,10 +166,20 @@ def annotate_cli():
         choices=["B-2", "B-3", "b-2", "b-3"],
         help="Override NRA target type (B-2 or B-3)"
     )
+    parser.add_argument(
+        "--copy-to-dir",
+        type=str,
+        default=None,
+        help="Optional destination directory to copy raw photo, canonical image, and annotations to on Save"
+    )
     args = parser.parse_args(sys.argv[2:])
 
     target_path = args.dir_opt or args.path
-    launch_annotation_editor(target_path=target_path, target_type=args.target.upper() if args.target else None)
+    launch_annotation_editor(
+        target_path=target_path,
+        target_type=args.target.upper() if args.target else None,
+        copy_to_dir=args.copy_to_dir
+    )
 
 
 def main():

@@ -232,11 +232,21 @@ If paper deformation or printing irregularities displaced the bullseye:
 ### 5. Re-numbering Shots
 If shots were added or deleted out of order, click **Re-number** in the shot table header to sequentially re-index shots from `1` to `N`.
 
-### 6. Saving Annotations & Review Cards
+### 6. Saving Annotations & Automatic Export to Dataset
 Press `Ctrl+S` (or click **💾 Save JSON & Review**). This executes an atomic update:
 1. Serializes the updated coordinates, caliber, ring scores, and dispersion metrics into the target's `.json` file.
 2. Appends `manually_verified: true` and an ISO-8601 timestamp to the metadata.
 3. Re-renders the visual verification card (`*_review.png`) on disk with updated crosshairs and HUD banner.
+
+#### Optional Auto-Copy to Directory on Save:
+When reviewing targets from a staging folder (such as `autolabeled_photos/B-2/JPEG/`), enable **"Copy on Save to directory:"** directly below the top toolbar (or pass `--copy-to-dir <PATH>` on launch):
+* **Select Destination:** Click **📁 Browse Destination...** or type a path (e.g. `datasets/real_targets` or `datasets/real_targets/B-2`).
+* **Automatic Assets Copied:**
+  * **Annotation JSON:** Updated verified `.json` file.
+  * **Canonical Image:** The rectified `*_canonical.png` ($1024 \times 1024$).
+  * **Raw Photograph:** The original camera/scanner photo (e.g. `.jpg`), automatically located from metadata, sibling `raw/` folders, or `range_photos/`.
+  * **Review Card:** The freshly rendered `*_review.png` verification card.
+* **Smart Layout Routing:** If the destination contains `annotations/` and `canonical_1024/` subfolders, files are placed into their corresponding subdirectories; otherwise, they are copied into the selected directory.
 
 ---
 

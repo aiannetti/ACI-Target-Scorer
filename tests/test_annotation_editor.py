@@ -279,6 +279,53 @@ class TestAnnotationEditor(unittest.TestCase):
         finally:
             app.destroy()
 
+    def test_save_with_copy_to_directory(self):
+        """Verifies that enabling copy_on_save copies raw, canonical, annotation, and review to chosen directory."""
+        # Create dummy raw image
+        raw_dir = self.tmp_p / "raw"
+        raw_dir.mkdir(parents=True)
+        raw_file = raw_dir / "test_target.jpg"
+        raw_file.write_bytes(b"dummy_raw_image_bytes")
+
+        # Destination 1: Flat directory
+        export_flat = self.tmp_p / "exported_flat"
+        app = AnnotationEditor(target_dir_or_file=self.tmp_dir, copy_to_dir=export_flat)
+        try:
+            self.assertTrue(app.copy_on_save_var.get())
+            self.assertEqual(app.copy_dir_var.get(), str(export_flat))
+
+            # Modify shot
+            app.shots[0]["score"] = 9
+            app.on_save()
+
+            # Verify files in export_flat
+            self.assertTrue((export_flat / "test_target.json").exists())
+            self.assertTrue((export_flat / "test_target_canonical.png").exists())
+            self.assertTrue((export_flat / "test_target_review.png").exists())
+            # Raw file copied to raw/ subfolder or export_flat
+            self.assertTrue((export_flat / "raw" / "test_target.jpg").exists() or (export_flat / "test_target.jpg").exists())
+
+            # Verify saved JSON in export directory has manual verification metadata
+            exported_ann = TargetAnnotation.from_json(export_flat / "test_target.json")
+            self.assertTrue(exported_ann.metadata.get("manually_verified"))
+            self.assertEqual(exported_ann.shots[0].score, 9)
+        finally:
+            app.destroy()
+
+        # Destination 2: Structured directory with annotations/ and canonical_1024/
+        export_struct = self.tmp_p / "exported_struct"
+        (export_struct / "annotations").mkdir(parents=True)
+        (export_struct / "canonical_1024").mkdir(parents=True)
+        app2 = AnnotationEditor(target_dir_or_file=self.tmp_dir, copy_to_dir=export_struct)
+        try:
+            app2.on_save()
+            self.assertTrue((export_struct / "annotations" / "test_target.json").exists())
+            self.assertTrue((export_struct / "canonical_1024" / "test_target_canonical.png").exists())
+            self.assertTrue((export_struct / "canonical_1024" / "test_target_review.png").exists())
+            self.assertTrue((export_struct / "raw" / "test_target.jpg").exists())
+        finally:
+            app2.destroy()
+
 
 if __name__ == "__main__":
     unittest.main()
