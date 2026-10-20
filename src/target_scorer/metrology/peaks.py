@@ -147,15 +147,15 @@ def is_spurious_margin_marking(
     c_min = int(center_disk.min())
 
     # 2a. Authentic dark void or tan backer void (center significantly darker than paper)
-    if c_mean < paper_median - 25 or c_min < paper_median - 45:
-        dark_mask = (gray < (paper_median - 25)).astype(np.uint8)
+    if c_mean < paper_median - 18 or c_min < paper_median - 35:
+        dark_mask = (gray < (paper_median - 18)).astype(np.uint8)
         contours, _ = cv2.findContours(dark_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         for cnt in contours:
             area = cv2.contourArea(cnt)
-            if area >= 12:
+            if area >= 10:
                 bx_c, by_c, bw, bh = cv2.boundingRect(cnt)
                 aspect = max(bw, bh) / max(1, min(bw, bh))
-                if aspect > 2.2:
+                if aspect > 2.4:
                     return True  # Elongated 1D stroke / text line
         return False  # Genuine circular dark bullet void!
 
@@ -165,7 +165,7 @@ def is_spurious_margin_marking(
         angles = np.linspace(0, 2 * np.pi, 16, endpoint=False)
         perim_samples = [gray[int(round(cy_p + r_lead * np.sin(a))), int(round(cx_p + r_lead * np.cos(a)))]
                          for a in angles if 0 <= cy_p + r_lead * np.sin(a) < patch.shape[0] and 0 <= cx_p + r_lead * np.cos(a) < patch.shape[1]]
-        if perim_samples and min(perim_samples) < paper_median - 25 and np.mean(perim_samples) < paper_median - 8:
+        if perim_samples and (min(perim_samples) < paper_median - 18 or np.mean(perim_samples) < paper_median - 6):
             return False  # Authentic scanner white bullet hole!
         return True  # White patch lacking bullet grease ring
 
@@ -235,8 +235,14 @@ def filter_spurious_peaks(
             dx = px - (canvas_size / 2.0)
             dy = py - (canvas_size / 2.0)
             dist_center = math.hypot(dx, dy)
-            outer_margin_px = 350.0 * sf
-            if (dist_center > outer_margin_px or (py < 250.0 * sf and px > 520.0 * sf) or py < 120.0 * sf):
+            # True outer scoring ring boundaries (B-3: 6-ring = 105.7mm; B-2: 4-ring = 93.1mm)
+            if target_type.upper() == "B-3":
+                outer_margin_px = 105.664 * pixels_per_mm + 10.0 * sf
+            else:
+                outer_margin_px = 93.091 * pixels_per_mm + 10.0 * sf
+
+            # Only check for spurious margin markings if well outside scoring rings or in handwriting zones
+            if (dist_center > outer_margin_px or (py < 120.0 * sf and px > 520.0 * sf)):
                 if is_spurious_margin_marking(px, py, canonical_bgr, pixels_per_mm):
                     continue
 

@@ -208,21 +208,21 @@ def sample_shot_position(
     )
 
     pz = random.random()
-    if pz < 0.40:
-        # Zone 1: Inner black bullseye
+    if pz < 0.35:
+        # Zone 1: Inner black bullseye (35%)
         r = float(np.random.exponential(scale=bull_radius_px * 0.40))
         r = min(bull_radius_px * 0.95, r)
         theta = random.uniform(0, 2.0 * np.pi)
         sx = bull_x + r * np.cos(theta)
         sy = bull_y + r * np.sin(theta)
-    elif pz < 0.60:
-        # Zone 2: Outer scoring rings on tan cardstock
+    elif pz < 0.70:
+        # Zone 2: Outer scoring rings on tan cardstock (35%)
         r = random.uniform(bull_radius_px * 1.02, outer_ring_radius_px * 0.98)
         theta = random.uniform(0, 2.0 * np.pi)
         sx = bull_x + r * np.cos(theta)
         sy = bull_y + r * np.sin(theta)
-    elif pz < 0.80:
-        # Zone 3: On-paper margin outside printed scoring rings
+    elif pz < 0.85:
+        # Zone 3: On-paper margin outside printed scoring rings (15%)
         r_min = outer_ring_radius_px * 1.04
         r_max = max(r_min + 10.0, min(w, h) / 2.0 - 25.0 * max(0.5, config.canvas_size / 512.0))
         r = random.uniform(r_min, r_max)
@@ -230,7 +230,7 @@ def sample_shot_position(
         sx = bull_x + r * np.cos(theta)
         sy = bull_y + r * np.sin(theta)
     else:
-        # Zone 4: Off-paper / cardboard backer & card border edges
+        # Zone 4: Off-paper / cardboard backer & card border edges (15%)
         edge = random.choice(["bottom", "bottom", "left", "right", "top"])
         sf = max(0.5, config.canvas_size / 512.0)
         edge_margin = random.uniform(

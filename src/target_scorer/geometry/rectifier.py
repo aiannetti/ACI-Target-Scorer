@@ -80,17 +80,32 @@ class TargetRectifier:
     @staticmethod
     def suppress_specular_glare(bgr: np.ndarray, dark_mask: np.ndarray) -> np.ndarray:
         """
-        Suppresses bright flash or range lamp specular highlights inside dark target ink
-        using fast Navier-Stokes morphological inpainting.
+        Suppresses localized specular flash or range lamp hotspots inside dark target ink.
+        Filters out thin concentric ring lines and crosshairs so only compact, large glare
+        reflections (e.g., flash hot-spots) are inpainted.
         """
         hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
         v_channel = hsv[:, :, 2]
         s_channel = hsv[:, :, 1]
 
         # Specular glares are high brightness (V > 230) and low saturation (S < 45) inside black bull
-        glare_mask = ((v_channel > 230) & (s_channel < 45) & (dark_mask > 0)).astype(np.uint8) * 255
+        candidate_mask = ((v_channel > 230) & (s_channel < 45) & (dark_mask > 0)).astype(np.uint8) * 255
+        if cv2.countNonZero(candidate_mask) < 25:
+            return bgr
+
+        # Isolate compact 2D glare patches and exclude thin lines/arcs (< 4 px thick)
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(candidate_mask)
+        glare_mask = np.zeros_like(candidate_mask)
+        for i in range(1, num_labels):
+            area = stats[i, cv2.CC_STAT_AREA]
+            w = stats[i, cv2.CC_STAT_WIDTH]
+            h = stats[i, cv2.CC_STAT_HEIGHT]
+            # Thin circular arcs or lines have high extent but low thickness (min(w, h) <= 3)
+            # Authentic glare hotspots are compact blobs with min(w, h) >= 6 and significant area
+            if area >= 35 and min(w, h) >= 6:
+                glare_mask[labels == i] = 255
+
         if cv2.countNonZero(glare_mask) > 10:
-            # Dilate mask to consume anti-aliased perimeter pixels and restore solid dark ink
             kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
             dilated_mask = cv2.dilate(glare_mask, kernel, iterations=2)
             return cv2.inpaint(bgr, dilated_mask, inpaintRadius=5, flags=cv2.INPAINT_TELEA)
@@ -300,11 +315,6 @@ class TargetRectifier:
         contour, blur_metric = self._segment_bullseye_contour(img_bgr)
         if contour is None or len(contour) < 5:
             return self._fallback_aspect_preserving_crop(img_bgr, blur_metric)
-
-        # Suppress specular flash hotspots inside dark target bullseye
-        dark_mask = np.zeros((h_raw, w_raw), dtype=np.uint8)
-        cv2.drawContours(dark_mask, [contour.astype(np.int32)], -1, 255, -1)
-        img_bgr = self.suppress_specular_glare(img_bgr, dark_mask)
 
         # Direct Least-Squares Ellipse Fitting (Fitzgibbon-Pilu-Fisher formulation)
         try:

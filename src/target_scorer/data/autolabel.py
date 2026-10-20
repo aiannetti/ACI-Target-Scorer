@@ -30,7 +30,7 @@ def autolabel_target_image(
     target_type: str = "B-2",
     canvas_size: int = 1024,
     pixels_per_mm: float = 4.0,
-    peak_threshold: float = 0.40,
+    peak_threshold: float = 0.25,
     max_shots: int = 10,
     bullet_diameter_mm: float = 5.69,
     device_str: Optional[str] = None,
@@ -253,8 +253,20 @@ def render_review_card(
             cv2.FONT_HERSHEY_SIMPLEX, max(0.32, 0.38 * sf), (130, 130, 140), 1, cv2.LINE_AA
         )
 
-    # Draw bullseye center crosshair (gold)
+    # Draw calibrated NRA scoring ring guide contours
+    rings_cfg = TargetRingsConfig(target_type=target_type)
+    rings_table = rings_cfg.get_rings_table()
     bc_x, bc_y = int(round(bull_center[0])), int(round(bull_center[1]))
+    black_rad_mm = rings_cfg.get_black_radius_mm()
+    for label, radius_mm, _ in rings_table:
+        r_px = int(round(radius_mm * pixels_per_mm))
+        if radius_mm <= black_rad_mm:
+            ring_color = (0, 215, 255) if label == "X" else (160, 160, 175)
+        else:
+            ring_color = (75, 75, 85)
+        cv2.circle(review_bgr, (bc_x, bc_y), r_px, ring_color, 1, lineType=cv2.LINE_AA)
+
+    # Draw bullseye center crosshair (gold)
     cv2.drawMarker(review_bgr, (bc_x, bc_y), (0, 215, 255), cv2.MARKER_CROSS, int(18 * sf), 2, cv2.LINE_AA)
 
     # Draw detected shots
