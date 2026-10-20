@@ -62,6 +62,26 @@ def list_colab_sessions(colab_bin: str) -> None:
         print(f"[-] Error retrieving Colab sessions: {e}")
 
 
+def package_real_dataset_bundle(real_data_dir: str, output_zip_path: str) -> None:
+    """
+    Packages annotated real target dataset for cloud training.
+    Includes canonical images (*_canonical.png), annotations (*.json), and manifests.
+    Excludes raw un-rectified camera photos ('raw/' subdirectories and heavy camera formats)
+    to minimize cloud upload bandwidth and transfer times.
+    """
+    import zipfile
+    with zipfile.ZipFile(output_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for root, dirs, files in os.walk(real_data_dir):
+            dirs[:] = [d for d in dirs if d != "raw" and d != "__pycache__"]
+            for file in files:
+                ext = os.path.splitext(file)[1].lower()
+                if ext in (".raw", ".nef", ".cr2", ".dng", ".arw"):
+                    continue
+                abs_p = os.path.join(root, file)
+                rel_p = os.path.relpath(abs_p, real_data_dir)
+                zf.write(abs_p, rel_p)
+
+
 def stop_colab_session(colab_bin: str, session_name: str) -> None:
     """Terminates a specific Colab session."""
     print(f"[*] Releasing Colab VM session '{session_name}'...")
@@ -175,8 +195,8 @@ def run_colab_training(
             real_data_zip = os.path.join(project_root, "real_data_bundle.zip")
             if os.path.exists(real_data_zip):
                 os.remove(real_data_zip)
-            print(f"[*] Packaging real target dataset from '{real_data_dir}'...")
-            shutil.make_archive(os.path.splitext(real_data_zip)[0], "zip", real_data_dir)
+            print(f"[*] Packaging real target dataset from '{real_data_dir}' (excluding raw photos)...")
+            package_real_dataset_bundle(real_data_dir, real_data_zip)
             try:
                 print(f"[*] Uploading real dataset archive ({os.path.getsize(real_data_zip) / (1024**2):.1f} MB) to Colab VM...")
                 cmd_upload_data = [colab_bin, "upload", real_data_zip, "/content/real_data.zip", "-s", session_name]
@@ -419,9 +439,9 @@ def run_colab_progressive_training(
             print("[✓] Initial weights uploaded.")
 
         if real_data_dir and os.path.exists(real_data_dir):
-            print(f"[+] Archiving and uploading real target dataset '{real_data_dir}'...")
+            print(f"[+] Archiving and uploading real target dataset '{real_data_dir}' (excluding raw photos)...")
             real_data_zip = os.path.join(project_root, "real_dataset_upload.zip")
-            shutil.make_archive(real_data_zip.replace(".zip", ""), "zip", real_data_dir)
+            package_real_dataset_bundle(real_data_dir, real_data_zip)
             cmd_up_d = [colab_bin, "upload", real_data_zip, "/content/real_dataset_upload.zip", "-s", session_name]
             subprocess.run(cmd_up_d, check=True)
             if os.path.exists(real_data_zip):
