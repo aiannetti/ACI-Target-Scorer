@@ -122,16 +122,67 @@ class TestAnnotationEditor(unittest.TestCase):
             app.destroy()
 
     def test_combobox_theme_styling(self):
-        """Verifies Caliber combobox has high-contrast styling matching Open Directory button."""
+        """Verifies Caliber combobox has modern Sun Valley styling or fallback clam styling."""
         app = AnnotationEditor(target_dir_or_file=self.tmp_dir)
         try:
-            # Check TCombobox configuration
-            field_bg = app.style.lookup("TCombobox", "fieldbackground")
-            bg = app.style.lookup("TCombobox", "background")
-            fg = app.style.lookup("TCombobox", "foreground")
-            self.assertEqual(field_bg, "#323440")
-            self.assertEqual(bg, "#323440")
-            self.assertEqual(fg, "#f0f2f5")
+            if app.has_sv_ttk:
+                self.assertIn("sun-valley", app.style.theme_use())
+                self.assertEqual(app.current_theme, "dark")
+            else:
+                field_bg = app.style.lookup("TCombobox", "fieldbackground")
+                bg = app.style.lookup("TCombobox", "background")
+                fg = app.style.lookup("TCombobox", "foreground")
+                self.assertEqual(field_bg, "#323440")
+                self.assertEqual(bg, "#323440")
+                self.assertEqual(fg, "#f0f2f5")
+        finally:
+            app.destroy()
+
+    def test_theme_toggle_dark_and_light(self):
+        """Verifies runtime toggling between Sun Valley Dark and Light themes."""
+        app = AnnotationEditor(target_dir_or_file=self.tmp_dir)
+        try:
+            if not app.has_sv_ttk:
+                self.skipTest("sv-ttk not installed in environment.")
+            self.assertEqual(app.current_theme, "dark")
+            self.assertEqual(app.cget("bg"), "#1c1c1c")
+            self.assertIn("Light", app.btn_theme.cget("text"))
+
+            # Toggle to Light
+            app.toggle_theme()
+            self.assertEqual(app.current_theme, "light")
+            self.assertEqual(app.cget("bg"), "#fafafa")
+            self.assertIn("Dark", app.btn_theme.cget("text"))
+
+            # Toggle back to Dark
+            app.toggle_theme()
+            self.assertEqual(app.current_theme, "dark")
+            self.assertEqual(app.cget("bg"), "#1c1c1c")
+            self.assertIn("Light", app.btn_theme.cget("text"))
+        finally:
+            app.destroy()
+
+    def test_eagle_eye_theme_sync(self):
+        """Verifies EagleEyeLoupe background and reticle canvas synchronize with theme changes."""
+        app = AnnotationEditor(target_dir_or_file=self.tmp_dir)
+        try:
+            if not app.has_sv_ttk:
+                self.skipTest("sv-ttk not installed in environment.")
+            app.on_open_eagle_eye()
+            loupe = app.eagle_eye_dialog
+            self.assertIsNotNone(loupe)
+            self.assertEqual(loupe.cget("bg"), "#1c1c1c")
+            self.assertEqual(loupe.canvas.cget("highlightbackground"), "#323440")
+
+            # Toggle theme to Light while loupe is open
+            app.toggle_theme()
+            self.assertEqual(loupe.cget("bg"), "#fafafa")
+            self.assertEqual(loupe.canvas.cget("highlightbackground"), "#d0d0d0")
+
+            # Toggle back to Dark
+            app.toggle_theme()
+            self.assertEqual(loupe.cget("bg"), "#1c1c1c")
+            self.assertEqual(loupe.canvas.cget("highlightbackground"), "#323440")
         finally:
             app.destroy()
 

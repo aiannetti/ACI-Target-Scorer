@@ -42,35 +42,38 @@ If no path argument is provided, the editor automatically scans default location
 ## 2. Interface Layout & Toolbar
 
 ```
-┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ [📁 Open Dir] [◀ Prev] target_005.json [1/12] [Next ▶] | Mode: (•) Shots ( ) Bull | Caliber: [.22 LR] │ [💾 Save (Ctrl+S)] [↺ Revert] [✕ Clear]
-├──────────────────────────────────────────────────────────────────────┬─────────────────────────────────┤
-│ [Fit] [100%] [Zoom +] [Zoom -] 150% [✓] Rings [✓] Spread [✓] Badges  │ NRA TARGET SPECIFICATION        │
-│                                                                      │ Target: NRA B-3 (50ft Rapid)    │
-│                                                                      │ Scale: 4.00 px/mm | 1024x1024   │
-│                                                                      ├─────────────────────────────────┤
-│                                                                      │ SCORE: 98 - 4X / 100            │
-│                     INTERACTIVE TARGET CANVAS                        │ Shots: 10 | X-Count: 4          │
-│                                                                      │ Extreme Spread: 24.32 mm        │
-│                - Smooth Pan & Zoom (20% - 1200%)                     │ Mean Radius:     8.14 mm        │
-│                - Drag to reposition shot markers                     ├─────────────────────────────────┤
-│                - Click to stamp new bullet impacts                   │ SHOT IMPACTS       [Re-number]  │
-│                - Double-click shot to launch Eagle Eye               │ #  | Score | X? | Radius | Coords│
-│                                                                      │ #1 |  10   | X  |  4.2mm | ...   │
-│                                                                      │ #2 |  10   |    |  8.9mm | ...   │
-│                                                                      ├─────────────────────────────────┤
-│                                                                      │ [Delete Shot] [✕ Delete All]    │
-│                                                                      │ [🔍 Eagle Eye (E)] [↺ Undo]     │
-├──────────────────────────────────────────────────────────────────────┴─────────────────────────────────┤
-│ Cursor: X=512.4, Y=498.2 (r=3.8 mm) | Ready. Click canvas to add shots | Press 'E' for Eagle Eye Loupe │
-└────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ [📁 Open Dir] [◀ Prev] target_005.json [1/12] [Next ▶] | Mode: (•) Shots ( ) Bull | Caliber: [.22 LR] │ [☀️ Light / 🌙 Dark] [💾 Save (Ctrl+S)] [↺ Revert] [✕ Clear]
+├────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ [✓] Copy on Save to directory: [datasets/real_targets                             ] [📁 Browse...] (copies all assets) │
+├──────────────────────────────────────────────────────────────────────────────┬─────────────────────────────────────────┤
+│ [Fit] [100%] [Zoom +] [Zoom -] 150% [Switch] Rings [Switch] Spread [Switch] Badges │ NRA TARGET SPECIFICATION        │
+│                                                                              │ Target: NRA B-3 (50ft Rapid)            │
+│                                                                              │ Scale: 4.00 px/mm | 1024x1024           │
+│                                                                              ├─────────────────────────────────────────┤
+│                                                                              │ SCORE: 98 - 4X / 100                    │
+│                     INTERACTIVE TARGET CANVAS                                │ Shots: 10 | X-Count: 4                  │
+│                                                                              │ Extreme Spread: 24.32 mm                │
+│                - Smooth Pan & Zoom (20% - 1200%)                             │ Mean Radius:     8.14 mm                │
+│                - Drag to reposition shot markers                             ├─────────────────────────────────────────┤
+│                - Click to stamp new bullet impacts                           │ SHOT IMPACTS               [Re-number]  │
+│                - Double-click shot to launch Eagle Eye                       │ #  | Score | X? | Radius (mm) | Coords  │
+│                                                                              │ #1 |  10   | X  |        4.20 | ...     │
+│                                                                              │ #2 |  10   |    |        8.91 | ...     │
+│                                                                              ├─────────────────────────────────────────┤
+│                                                                              │ [Delete Shot (Del)] [✕ Delete All Shots]│
+│                                                                              │ [🔍 Eagle Eye Gauge (E)] [↺ Undo]       │
+├──────────────────────────────────────────────────────────────────────────────┴─────────────────────────────────────────┤
+│ Cursor: X=512.4, Y=498.2 (r=3.8 mm) | Ready. Click canvas to add shots | Press 'E' for Eagle Eye Loupe | Ctrl+T toggles theme │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-The application consists of four coordinated panels:
-1. **Top Control Toolbar:** Dataset directory picker, sequential target navigation, mode toggles, caliber selection dropdown, and saving controls.
-2. **Interactive Canvas (Center):** High-framerate rendering of the unwarped canonical target card with calibrated visual overlays.
-3. **Metrology HUD & Shot Table (Right):** Live ballistic group statistics (Score, Extreme Spread, Mean Radius, COI) and interactive shot table. Selecting any row highlights the corresponding shot on canvas.
-4. **Bottom Status Bar:** Live cursor coordinates (pixel space and millimeter radial distance from bullseye) and workflow state messages.
+The application is themed with the modern **Sun Valley (`sv-ttk`)** Fluent Design system (rounded buttons, sleek high-DPI sprites, sliding switch toggles, and dynamic dark/light mode):
+1. **Top Control Toolbar:** Dataset directory picker, sequential target navigation, mode toggles, caliber selection dropdown, runtime Dark/Light theme toggle, and saving controls.
+2. **Export / Copy on Save Bar:** Quick directory destination input, browse dialog, and switch toggle to automatically duplicate verified raw/canonical/annotation pairs on save.
+3. **Interactive Canvas (Center):** High-framerate rendering of the unwarped canonical target card with calibrated visual overlays and sliding switch controls.
+4. **Metrology HUD & Shot Table (Right):** Elevated `Card.TFrame` ballistic group statistics (Score, Extreme Spread, Mean Radius, COI) and interactive shot table. Selecting any row highlights the corresponding shot on canvas.
+5. **Bottom Status Bar:** Live cursor coordinates (pixel space and millimeter radial distance from bullseye) and workflow state messages.
 
 ---
 
@@ -258,6 +261,7 @@ When reviewing targets from a staging folder (such as `autolabeled_photos/B-2/JP
 | :--- | :--- | :--- |
 | `Ctrl + S` | Global | Save annotations to JSON and regenerate `*_review.png` |
 | `Ctrl + Z` | Global | Undo last modification (up to 30 steps) |
+| `Ctrl + T` / `F10` | Global | Toggle Sun Valley Dark / Light Mode |
 | `E` | Global | Toggle Eagle Eye Scoring Gauge dialog |
 | `N` / `P` | Global | Navigate to Next / Previous target in directory |
 | `F` | Global | Fit target canvas to window |

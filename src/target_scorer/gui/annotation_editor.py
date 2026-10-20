@@ -45,7 +45,9 @@ class EagleEyeLoupe(tk.Toplevel):
         self.title(f"Eagle Eye Scoring Gauge - Shot #{self.get_current_shot_id()}")
         self.geometry("450x680")
         self.minsize(420, 660)
-        self.configure(bg="#18191c")
+        theme = getattr(parent, "current_theme", "dark")
+        bg_color = "#1c1c1c" if theme == "dark" else "#fafafa"
+        self.configure(bg=bg_color)
         self.transient(parent)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
@@ -86,6 +88,13 @@ class EagleEyeLoupe(tk.Toplevel):
         except Exception:
             pass
         super().destroy()
+
+    def update_theme(self, theme: str):
+        bg_color = "#1c1c1c" if theme == "dark" else "#fafafa"
+        border_color = "#323440" if theme == "dark" else "#d0d0d0"
+        self.configure(bg=bg_color)
+        if hasattr(self, "canvas"):
+            self.canvas.configure(highlightbackground=border_color)
 
     def get_current_shot(self) -> Optional[Dict[str, Any]]:
         if 0 <= self.shot_idx < len(self.parent_editor.shots):
@@ -156,13 +165,15 @@ class EagleEyeLoupe(tk.Toplevel):
         canvas_card = ttk.Frame(self, style="Card.TFrame", padding=6)
         canvas_card.pack(side=tk.TOP, padx=12, pady=(0, 6))
 
+        theme = getattr(self.parent_editor, "current_theme", "dark")
+        border_col = "#323440" if theme == "dark" else "#d0d0d0"
         self.canvas = tk.Canvas(
             canvas_card,
             width=self.canvas_dim,
             height=self.canvas_dim,
             bg="#0f1013",
             highlightthickness=1,
-            highlightbackground="#323440",
+            highlightbackground=border_col,
             cursor="crosshair"
         )
         self.canvas.pack()
@@ -404,11 +415,24 @@ class AnnotationEditor(tk.Tk):
         self.geometry("1420x920")
         self.minsize(1050, 700)
 
-        # Apply dark theme styling
-        self.configure(bg="#18191c")
+        # Apply theme styling (Sun Valley theme with fallback to classic dark)
         self.style = ttk.Style(self)
-        self.style.theme_use("clam")
-        self._configure_theme()
+        self.current_theme = "dark"
+        self.has_sv_ttk = False
+        try:
+            import sv_ttk
+            sv_ttk.set_theme("dark")
+            self.has_sv_ttk = True
+        except Exception:
+            self.has_sv_ttk = False
+
+        if self.has_sv_ttk:
+            self.configure(bg="#1c1c1c")
+            self._configure_sv_theme()
+        else:
+            self.configure(bg="#18191c")
+            self.style.theme_use("clam")
+            self._configure_legacy_dark_theme()
 
         # State
         self.target_type_override = target_type_override
@@ -472,7 +496,21 @@ class AnnotationEditor(tk.Tk):
             if default_dir.exists():
                 self.load_path(default_dir)
 
-    def _configure_theme(self):
+    def _configure_sv_theme(self):
+        """Configures typography, badge highlights, and button states for Sun Valley theme."""
+        theme = self.current_theme
+        header_fg = "#57c8ff" if theme == "dark" else "#005fb8"
+        sub_fg = "#a0a4b0" if theme == "dark" else "#5c5c5c"
+        danger_fg = "#ff6b6b" if theme == "dark" else "#c62828"
+        success_fg = "#00ff78" if theme == "dark" else "#0b8043"
+
+        self.style.configure("Header.TLabel", font=("Segoe UI", 12, "bold"), foreground=header_fg)
+        self.style.configure("SubHeader.TLabel", font=("Segoe UI", 10, "bold"), foreground=sub_fg)
+        self.style.configure("Danger.TButton", font=("Segoe UI", 9, "bold"), foreground=danger_fg)
+        self.style.configure("Success.TButton", font=("Segoe UI", 9, "bold"), foreground=success_fg)
+
+    def _configure_legacy_dark_theme(self):
+        """Fallback theme configuration using clam for environments without sv-ttk."""
         dark_bg = "#1e1e24"
         card_bg = "#26272e"
         accent_color = "#00d7ff"
@@ -498,7 +536,6 @@ class AnnotationEditor(tk.Tk):
         self.style.configure("Danger.TButton", background="#a82020", foreground="#ffffff")
         self.style.map("Danger.TButton", background=[("active", "#cf2a2a"), ("pressed", "#781515")])
 
-        # Caliber Combobox: exact match to Open Directory button (#323440 background, #f0f2f5 foreground)
         self.style.configure(
             "TCombobox",
             fieldbackground="#323440",
@@ -536,33 +573,86 @@ class AnnotationEditor(tk.Tk):
         self.style.map("Treeview", background=[("selected", "#005a9e")], foreground=[("selected", "#ffffff")])
         self.style.configure("Treeview.Heading", background="#2c2d36", foreground=text_fg, font=("Segoe UI", 9, "bold"))
 
+    def toggle_theme(self):
+        """Toggles between Sun Valley Dark and Light themes at runtime."""
+        if not self.has_sv_ttk:
+            return
+        import sv_ttk
+        current = sv_ttk.get_theme()
+        new_theme = "light" if current == "dark" else "dark"
+        sv_ttk.set_theme(new_theme)
+        self._apply_theme_colors(new_theme)
+
+    def _apply_theme_colors(self, theme: str):
+        """Applies theme-specific colors across root window, labels, buttons, and sub-dialogs."""
+        self.current_theme = theme
+        if self.has_sv_ttk:
+            bg_color = "#1c1c1c" if theme == "dark" else "#fafafa"
+            header_fg = "#57c8ff" if theme == "dark" else "#005fb8"
+            sub_fg = "#a0a4b0" if theme == "dark" else "#5c5c5c"
+            danger_fg = "#ff6b6b" if theme == "dark" else "#c62828"
+            success_fg = "#00ff78" if theme == "dark" else "#0b8043"
+            status_fg = "#57c8ff" if theme == "dark" else "#005fb8"
+            hint_fg = "#858999" if theme == "dark" else "#6c7080"
+        else:
+            bg_color = "#18191c"
+            header_fg = "#00d7ff"
+            sub_fg = "#a0a4b0"
+            danger_fg = "#ffffff"
+            success_fg = "#ffffff"
+            status_fg = "#00d7ff"
+            hint_fg = "#858999"
+
+        self.configure(bg=bg_color)
+        self.style.configure("Header.TLabel", foreground=header_fg)
+        self.style.configure("SubHeader.TLabel", foreground=sub_fg)
+        self.style.configure("Danger.TButton", foreground=danger_fg)
+        self.style.configure("Success.TButton", foreground=success_fg)
+
+        if hasattr(self, "btn_theme"):
+            if theme == "dark":
+                self.btn_theme.config(text="☀️ Light Mode")
+            else:
+                self.btn_theme.config(text="🌙 Dark Mode")
+
+        if hasattr(self, "lbl_status_msg"):
+            self.lbl_status_msg.config(foreground=status_fg)
+        if hasattr(self, "lbl_hint"):
+            self.lbl_hint.config(foreground=hint_fg)
+        if hasattr(self, "lbl_scale_info"):
+            self.lbl_scale_info.config(foreground=sub_fg)
+
+        # Update Eagle Eye Loupe if currently open
+        if getattr(self, "eagle_eye_dialog", None) and self.eagle_eye_dialog.winfo_exists():
+            self.eagle_eye_dialog.update_theme(theme)
+
     def _build_ui(self):
         # 1. Top Control Toolbar
         top_bar = ttk.Frame(self, padding=(10, 8))
         top_bar.pack(side=tk.TOP, fill=tk.X)
 
-        btn_open = ttk.Button(top_bar, text="📁 Open Directory...", command=self.on_open_directory)
+        btn_open = ttk.Button(top_bar, text="📁 Open Directory...", style="Accent.TButton", command=self.on_open_directory)
         btn_open.pack(side=tk.LEFT, padx=(0, 10))
 
         btn_prev = ttk.Button(top_bar, text="◀ Prev (P)", command=self.on_prev_target)
         btn_prev.pack(side=tk.LEFT, padx=2)
 
-        self.lbl_target_info = ttk.Label(top_bar, text="No targets loaded", font=("Segoe UI", 10, "bold"), width=36)
+        self.lbl_target_info = ttk.Label(top_bar, text="No targets loaded", font=("Segoe UI", 10, "bold"), width=34)
         self.lbl_target_info.pack(side=tk.LEFT, padx=6)
 
         btn_next = ttk.Button(top_bar, text="Next (N) ▶", command=self.on_next_target)
         btn_next.pack(side=tk.LEFT, padx=2)
 
-        ttk.Separator(top_bar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=12)
+        ttk.Separator(top_bar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
 
         # Mode Selection
         ttk.Label(top_bar, text="Mode:").pack(side=tk.LEFT, padx=(0, 4))
-        rb_shot = ttk.Radiobutton(top_bar, text="Shots (Click to Add / Drag)", variable=self.edit_mode_var, value="shot")
+        rb_shot = ttk.Radiobutton(top_bar, text="Shots (Click / Drag)", variable=self.edit_mode_var, value="shot")
         rb_shot.pack(side=tk.LEFT, padx=4)
         rb_bull = ttk.Radiobutton(top_bar, text="Bullseye Center", variable=self.edit_mode_var, value="bullseye")
         rb_bull.pack(side=tk.LEFT, padx=4)
 
-        ttk.Separator(top_bar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=12)
+        ttk.Separator(top_bar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
 
         # Caliber Selector
         ttk.Label(top_bar, text="Caliber:").pack(side=tk.LEFT, padx=(0, 4))
@@ -570,14 +660,22 @@ class AnnotationEditor(tk.Tk):
             top_bar,
             values=[".22 LR (5.69 mm)", ".32 S&W Long (7.98 mm)", "9mm / .38 (9.02 mm)", ".45 ACP (11.48 mm)"],
             state="readonly",
-            width=22
+            width=20
         )
         self.caliber_combo.current(0)
         self.caliber_combo.bind("<<ComboboxSelected>>", self.on_caliber_changed)
         self.caliber_combo.pack(side=tk.LEFT, padx=4)
 
         # Right-aligned buttons on top toolbar
-        btn_save = ttk.Button(top_bar, text="💾 Save JSON & Review (Ctrl+S)", style="Success.TButton", command=self.on_save)
+        self.btn_theme = ttk.Button(
+            top_bar,
+            text="☀️ Light Mode" if self.current_theme == "dark" else "🌙 Dark Mode",
+            command=self.toggle_theme,
+            width=13
+        )
+        self.btn_theme.pack(side=tk.RIGHT, padx=4)
+
+        btn_save = ttk.Button(top_bar, text="💾 Save (Ctrl+S)", style="Accent.TButton", command=self.on_save)
         btn_save.pack(side=tk.RIGHT, padx=4)
 
         btn_reset = ttk.Button(top_bar, text="↺ Revert", command=self.on_revert)
@@ -587,22 +685,24 @@ class AnnotationEditor(tk.Tk):
         btn_clear.pack(side=tk.RIGHT, padx=4)
 
         # 1b. Export / Copy on Save Bar
-        export_bar = ttk.Frame(self, padding=(10, 3))
+        export_bar = ttk.Frame(self, padding=(10, 4))
         export_bar.pack(side=tk.TOP, fill=tk.X)
 
+        cb_style = "Switch.TCheckbutton" if self.has_sv_ttk else "TCheckbutton"
         cb_copy = ttk.Checkbutton(
             export_bar,
             text="Copy on Save to directory:",
-            variable=self.copy_on_save_var
+            variable=self.copy_on_save_var,
+            style=cb_style
         )
-        cb_copy.pack(side=tk.LEFT, padx=(0, 6))
+        cb_copy.pack(side=tk.LEFT, padx=(0, 8))
 
         self.entry_copy_dir = ttk.Entry(
             export_bar,
             textvariable=self.copy_dir_var,
-            width=55
+            width=50
         )
-        self.entry_copy_dir.pack(side=tk.LEFT, padx=(0, 6))
+        self.entry_copy_dir.pack(side=tk.LEFT, padx=(0, 8))
 
         btn_browse_copy = ttk.Button(
             export_bar,
@@ -611,13 +711,14 @@ class AnnotationEditor(tk.Tk):
         )
         btn_browse_copy.pack(side=tk.LEFT, padx=(0, 10))
 
-        lbl_hint = ttk.Label(
+        hint_fg = "#858999" if self.current_theme == "dark" else "#6c7080"
+        self.lbl_hint = ttk.Label(
             export_bar,
             text="(copies .json, canonical image, raw photo, and review card)",
-            foreground="#858999",
+            foreground=hint_fg,
             font=("Segoe UI", 8)
         )
-        lbl_hint.pack(side=tk.LEFT)
+        self.lbl_hint.pack(side=tk.LEFT)
 
         # 2. Main Middle Area (Canvas + Sidebar HUD)
         middle_paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
@@ -643,13 +744,13 @@ class AnnotationEditor(tk.Tk):
         self.lbl_zoom = ttk.Label(canvas_tools, text="100%", font=("Segoe UI", 9, "bold"), width=7)
         self.lbl_zoom.pack(side=tk.LEFT, padx=6)
 
-        cb_rings = ttk.Checkbutton(canvas_tools, text="NRA Ring Guides", variable=self.show_rings_var, command=self.redraw_canvas)
+        cb_rings = ttk.Checkbutton(canvas_tools, text="NRA Ring Guides", variable=self.show_rings_var, command=self.redraw_canvas, style=cb_style)
         cb_rings.pack(side=tk.LEFT, padx=8)
 
-        cb_spread = ttk.Checkbutton(canvas_tools, text="Extreme Spread Line", variable=self.show_spread_var, command=self.redraw_canvas)
+        cb_spread = ttk.Checkbutton(canvas_tools, text="Extreme Spread Line", variable=self.show_spread_var, command=self.redraw_canvas, style=cb_style)
         cb_spread.pack(side=tk.LEFT, padx=8)
 
-        cb_badges = ttk.Checkbutton(canvas_tools, text="Shot Badges", variable=self.show_badges_var, command=self.redraw_canvas)
+        cb_badges = ttk.Checkbutton(canvas_tools, text="Shot Badges", variable=self.show_badges_var, command=self.redraw_canvas, style=cb_style)
         cb_badges.pack(side=tk.LEFT, padx=8)
 
         # Tkinter Canvas
@@ -758,13 +859,18 @@ class AnnotationEditor(tk.Tk):
         btn_undo.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(3, 0))
 
         # 3. Bottom Status Bar
-        status_bar = ttk.Frame(self, relief="sunken", padding=(8, 4))
+        status_bar = ttk.Frame(self, padding=(10, 5))
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
-        self.lbl_cursor_pos = ttk.Label(status_bar, text="Cursor: X=0.0, Y=0.0", width=34)
+        self.lbl_cursor_pos = ttk.Label(status_bar, text="Cursor: X=0.0, Y=0.0", width=30)
         self.lbl_cursor_pos.pack(side=tk.LEFT)
 
-        self.lbl_status_msg = ttk.Label(status_bar, text="Ready. Click canvas to add shots | Drag to move | Press 'E' for Eagle Eye Loupe", foreground="#00d7ff")
+        status_fg = "#57c8ff" if self.current_theme == "dark" else "#005fb8"
+        self.lbl_status_msg = ttk.Label(
+            status_bar,
+            text="Ready. Click canvas to add shots | Drag to move | Press 'E' for Eagle Eye Loupe | Ctrl+T toggles theme",
+            foreground=status_fg
+        )
         self.lbl_status_msg.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
 
         self.lbl_save_status = ttk.Label(status_bar, text="", font=("Segoe UI", 9, "bold"), foreground="#00ff78")
@@ -773,6 +879,9 @@ class AnnotationEditor(tk.Tk):
     def _bind_shortcuts(self):
         self.bind("<Control-s>", lambda e: self.on_save())
         self.bind("<Control-z>", lambda e: self.on_undo())
+        self.bind("<Control-t>", lambda e: self.toggle_theme())
+        self.bind("<Control-T>", lambda e: self.toggle_theme())
+        self.bind("<F10>", lambda e: self.toggle_theme())
         self.bind("<Delete>", lambda e: self.on_delete_selected())
         self.bind("<BackSpace>", lambda e: self.on_delete_selected())
         self.bind("e", lambda e: self.on_open_eagle_eye())
