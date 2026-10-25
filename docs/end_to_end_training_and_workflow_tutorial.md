@@ -251,13 +251,34 @@ target-scorer colab-train \
 
 ### What Happens Automatically:
 1. Queries your Colab compute unit balance (`colab usage`).
-2. Bundles the codebase and packages `datasets/real_targets/`.
+2. Bundles the codebase and packages `datasets/real_targets/` (filtering raw unrectified camera images and review cards).
 3. Provisions a cloud VM with an **NVIDIA A100 40GB** or **T4 16GB** GPU.
 4. Uploads code, weights, and real data; installs dependencies in remote venv.
 5. Runs mixed-precision training across all stages in ~6–8 minutes.
 6. Evaluates post-training diagnostic scorecards for both NRA B-2 and B-3 targets.
 7. Downloads the optimal `.pt` checkpoints and scorecards to your local `weights/` and `visual_inspection_reports/` folders.
 8. Releases the cloud session immediately to prevent burning compute units.
+
+### C. Dataset Upload Transport: Why Built-in Chunked Streaming Was Chosen
+
+When training with `--real-data-dir`, target datasets are packaged by [`package_real_dataset_bundle()`](file:///home/antho/target_scorer/src/target_scorer/colab_runner.py#L65-L85) and uploaded via [`upload_file_chunked()`](file:///home/antho/target_scorer/src/target_scorer/colab_runner.py#L96-L167).
+
+For datasets in the **50 MB – 500 MB** range, chunked streaming via `colab upload` offers a key operational advantage:
+
+1. **Zero External Dependencies:** Requires no GCP billing buckets, no Google Drive authorizations, and no SSH key configuration.
+2. **1-Click Self-Contained Automation:** Running `./target_env/bin/python3 -m target_scorer.cli colab-train` packages the data, slices it, uploads it, trains the model, downloads the scorecards, and shuts down the instance with a single command.
+
+If your dataset eventually scales beyond several gigabytes, we can readily wire in the `colab ssh --proxy-mode` (SCP) or GCS bucket transfer workflow!
+
+#### Understanding the Network Transport & Failure Mode Mitigations:
+
+* **Why Standard Direct `scp` Cannot Reach Colab VMs:**
+  Google Colab runs instances in Google Container Engine / Borg sandbox containers behind Carrier-Grade NAT (CGNAT) and ingress firewalls. Colab VMs do not receive public IPv4/IPv6 addresses, and direct inbound connections on TCP port 22 (OpenSSH) are blocked from the internet. Direct `scp` from your local shell cannot establish a route or socket to the VM.
+* **How `colab ssh --proxy-mode` Works:**
+  To provide shell access, Google Colab provides an OpenSSH proxy bridge. The Colab VM initiates an outbound duplex WebSocket connection to Google Cloud's relay infrastructure. On the local workstation, OpenSSH connects through a custom `ProxyCommand` that routes SSH streams through this WebSocket bridge. While effective for interactive shells, it introduces external client dependencies and proxy state management.
+* **Why Chunked Streaming Avoids HTTP 500 / 413 Errors:**
+  Colab CLI's standard `colab upload` communicates via HTTP POST to the Jupyter REST Contents API (`/api/contents/`). Uploading monolithic zip archives exceeding ~35 MB – 50 MB frequently saturates the Jupyter reverse-proxy buffer or exceeds payload limits, resulting in fatal `HTTP 500 Internal Server Error` or `HTTP 413 Payload Too Large` failures.
+  [`upload_file_chunked`](file:///home/antho/target_scorer/src/target_scorer/colab_runner.py#L96-L167) solves this by slicing large datasets into deterministic $\le 35\text{ MB}$ parts, uploading them sequentially, and executing an automated remote Python reassembly script via `colab exec` to stitch the binary slices back into a single archive before extraction.
 
 ---
 

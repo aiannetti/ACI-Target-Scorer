@@ -18,6 +18,7 @@ This document details the engineering principles, mathematical formulations, coo
 11. [Robustness, Input Validation, & Channel Normalization](#11-robustness-input-validation--channel-normalization)
 12. [TargetAnnotation JSON Schema & Data Model](#12-targetannotation-json-schema--data-model)
 13. [Desktop Metrology GUI & Sun Valley Design System](#13-desktop-metrology-gui--sun-valley-design-system)
+14. [Cloud Training & Remote Transport Architecture](#14-cloud-training--remote-transport-architecture)
 
 ---
 
@@ -443,3 +444,79 @@ When verifying real-world target sets, the editor features an automated `copy-on
 * **User Path Expansion:** Automatically parses relative and tilde (`~`) paths (e.g., `~/datasets/real_targets`).
 * **Multi-Format Raw Resolution:** Resolves raw smartphone photographs (`.jpg`, `.jpeg`, `.png`, `.heic`, `.dng`, `.nef`, `.cr2`) using embedded annotation metadata or cross-directory heuristic search.
 * **Strict Artifact Segregation:** Automatically synchronizes `canonical_1024/`, `annotations/`, and `raw/` subdirectories while strictly isolating burnt-in HUD review cards (`*_review.png`) to avoid polluting clean model inputs.
+
+---
+
+## 14. Cloud Training & Remote Transport Architecture
+
+Source: [`src/target_scorer/colab_runner.py`](file:///home/antho/target_scorer/src/target_scorer/colab_runner.py)
+
+The cloud orchestration engine enables 1-click GPU provisioning, repository deployment, real dataset transport, model training, and diagnostic evaluation on Google Colab CLI without requiring local GPU hardware.
+
+### A. Network Topology & Remote Access Limitations
+Google Colab virtual machines operate inside Google Container Engine / Borg sandbox containers. This topology imposes strict network constraints:
+1. **No Inbound Connectivity (No Public IP):** Colab VMs reside behind Carrier-Grade NAT (CGNAT) and ingress reverse-proxy firewalls. They are not assigned routable public IPv4 or IPv6 addresses.
+2. **Direct `scp` / `ssh` Infeasibility:** Because TCP port 22 is firewalled and unreachable from the public internet, traditional point-to-point Secure Copy (`scp`) or direct SSH connections cannot establish a socket connection to a Colab VM.
+
+### B. Transport Mechanisms: WebSocket Proxy vs. Jupyter Contents API
+To transfer datasets and code between local developer workstations and remote Colab environments, two distinct network pathways exist:
+
+```mermaid
+flowchart TD
+    subgraph Local["Local Developer Workstation"]
+        CLI["target-scorer CLI / colab_runner.py"]
+        Data["Real Target Dataset (50MB - 500MB)"]
+        SshClient["OpenSSH Client (colab ssh)"]
+    end
+
+    subgraph Transport["Network Bridge & Transport Layer"]
+        ContentsAPI["Google Colab Jupyter Contents API\n(HTTP POST /api/contents/ - Sliced Chunks)"]
+        WSProxy["Google Cloud Proxy Bridge\n(Authenticated Duplex WebSocket / ProxyCommand)"]
+    end
+
+    subgraph ColabVM["Google Colab Cloud VM (Container / NAT)"]
+        JupyterServer["Jupyter Server Daemon"]
+        Reassemble["Remote Python Reassembler"]
+        SSHDaemon["Remote SSH Daemon (Internal Port 22)"]
+        Disk["VM Local Filesystem (/content/)"]
+        GPU["Cloud GPU (NVIDIA A100 / T4)"]
+    end
+
+    Data -->|"Sliced <=35MB parts (colab upload)"| ContentsAPI
+    ContentsAPI --> JupyterServer
+    JupyterServer --> Reassemble
+    Reassemble --> Disk
+
+    SshClient -.->|"OpenSSH ProxyCommand over WebSocket"| WSProxy
+    WSProxy -.-> SSHDaemon
+    SSHDaemon -.-> Disk
+
+    Disk --> GPU
+```
+
+#### 1. OpenSSH WebSocket Bridge (`colab ssh --proxy-mode`)
+Google Colab CLI provides an SSH encapsulation mode (`colab ssh --proxy-mode`). When invoked:
+* The remote Colab VM establishes an outbound HTTPS WebSocket connection to Google Cloud's command-line relay infrastructure.
+* On the local machine, OpenSSH connects via a custom `ProxyCommand` that pipes standard SSH streams over the authenticated duplex WebSocket tunnel.
+* **Trade-off:** While this mode allows standard interactive terminal access and traditional `scp` file piping, it introduces external client-side dependencies (configured OpenSSH client, keypair negotiation, and WebSocket proxy daemon management).
+
+#### 2. Jupyter Contents API Streaming (`colab upload`) & HTTP 500 Mitigation
+Colab CLI’s native file transport (`colab upload`) communicates via HTTP POST requests to Jupyter's REST Contents API (`/api/contents/`).
+* **The HTTP 500 / 413 Failure Mode:** When uploading large monolithic files (e.g., zip archives exceeding 35 MB – 50 MB), the Jupyter server reverse proxy frequently exhausts its internal memory buffer or encounters gateway request size limits, returning fatal `HTTP 500 Internal Server Error` or `HTTP 413 Payload Too Large` faults.
+* **The Chunked Streaming Solution (`upload_file_chunked`):** To ensure 100% reliable uploads without hitting payload ceilings, [`src/target_scorer/colab_runner.py`](file:///home/antho/target_scorer/src/target_scorer/colab_runner.py#L96-L167) implements deterministic file slicing:
+  1. If file size $\le 35\text{ MB}$, it performs a standard atomic upload via `colab upload`.
+  2. If file size $> 35\text{ MB}$, it splits the local archive into indexed binary slices (`.part_000`, `.part_001`, ...) capped at $35\text{ MB}$ each.
+  3. Uploads each part sequentially via `colab upload`.
+  4. Dispatches an in-memory Python script via `colab exec` that concatenates the parts sequentially in binary mode (`open(target_file, 'wb')`), verifies file integrity, deletes the temporary slices, and logs the reassembled size.
+  5. Cleans up local slice artifacts in a guaranteed `finally` block.
+
+### C. Why Built-in Chunked Streaming Was Chosen
+For target datasets in the **50 MB – 500 MB** range, chunked streaming via `colab upload` offers decisive operational advantages:
+1. **Zero External Dependencies:** Requires no GCP billing buckets, no Google Cloud Storage (GCS) credentials, no Google Drive OAuth browser authorizations, and no SSH key configuration.
+2. **1-Click Self-Contained Automation:** Running `./target_env/bin/python3 -m target_scorer.cli colab-train` (or `colab-progressive-train`) packages the data, slices it, uploads it, trains the model, downloads the scorecards, and shuts down the instance with a single command.
+
+### D. Scalability Roadmap for Multi-Gigabyte Datasets
+If competition datasets scale beyond several gigabytes (> 2 GB), two high-throughput pathways are readily supported:
+* **`colab ssh --proxy-mode` (SCP Stream):** Piping streaming archives directly over the OpenSSH WebSocket bridge.
+* **Google Cloud Storage (GCS) Direct Bucket Transfer:** Mounting or streaming pre-staged cloud buckets directly into the Colab VM via `gsutil` or GCS FUSE.
+
