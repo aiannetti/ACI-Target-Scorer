@@ -24,6 +24,7 @@ from target_scorer.colab_runner import (
     list_colab_sessions,
     package_real_dataset_bundle,
     stop_colab_session,
+    upload_file_chunked,
 )
 from target_scorer.train import parse_progressive_stages
 
@@ -247,6 +248,43 @@ class TestColabRunnerCLI(unittest.TestCase):
         self.assertEqual(len(custom_stages_6), 2)
         self.assertEqual(custom_stages_6[0], (256, 1.0, 1.6, 16, 2, 0.001, 400, 50))
         self.assertEqual(custom_stages_6[1], (512, 2.0, 2.2, 12, 3, 0.0005, 400, 50))
+
+    @patch("subprocess.run")
+    def test_upload_file_chunked_small(self, mock_run):
+        """Verifies small files under threshold upload in a single direct call."""
+        mock_run.return_value = MagicMock(returncode=0)
+        temp_dir = tempfile.mkdtemp()
+        try:
+            temp_file = os.path.join(temp_dir, "small_file.txt")
+            with open(temp_file, "wb") as f:
+                f.write(b"Hello World" * 100)
+            upload_file_chunked("colab", temp_file, "/content/small_file.txt", "test_session", max_chunk_bytes=10000)
+            mock_run.assert_called_once_with(["colab", "upload", temp_file, "/content/small_file.txt", "-s", "test_session"], check=True)
+        finally:
+            shutil.rmtree(temp_dir)
+
+    @patch("subprocess.Popen")
+    @patch("subprocess.run")
+    def test_upload_file_chunked_large(self, mock_run, mock_popen):
+        """Verifies large files over threshold are split, uploaded in parts, and reassembled remotely."""
+        mock_run.return_value = MagicMock(returncode=0)
+        proc_mock = MagicMock()
+        proc_mock.communicate.return_value = ("ok", "")
+        proc_mock.returncode = 0
+        mock_popen.return_value = proc_mock
+
+        temp_dir = tempfile.mkdtemp()
+        try:
+            temp_file = os.path.join(temp_dir, "large_file.bin")
+            with open(temp_file, "wb") as f:
+                f.write(b"X" * 250)
+
+            # Force chunks of 100 bytes (will produce 3 chunks: 100, 100, 50)
+            upload_file_chunked("colab", temp_file, "/content/large_file.bin", "test_session", max_chunk_bytes=100)
+            self.assertEqual(mock_run.call_count, 3)
+            mock_popen.assert_called_once()
+        finally:
+            shutil.rmtree(temp_dir)
 
 
 if __name__ == "__main__":

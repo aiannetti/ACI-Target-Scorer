@@ -93,6 +93,79 @@ def stop_colab_session(colab_bin: str, session_name: str) -> None:
         print(f"[-] Failed to terminate session '{session_name}'.")
 
 
+def upload_file_chunked(
+    colab_bin: str,
+    local_path: str,
+    remote_path: str,
+    session_name: str,
+    max_chunk_bytes: int = 35 * 1024 * 1024,
+) -> None:
+    """
+    Uploads a file to a Colab session, automatically splitting large files into
+    chunks (default <= 35 MB) to avoid HTTP 500 errors or payload size limits
+    on the Colab Jupyter contents API, then reassembles them remotely on the VM.
+    """
+    file_size = os.path.getsize(local_path)
+    if file_size <= max_chunk_bytes:
+        cmd = [colab_bin, "upload", local_path, remote_path, "-s", session_name]
+        subprocess.run(cmd, check=True)
+        return
+
+    base_name = os.path.basename(remote_path)
+    remote_dir = os.path.dirname(remote_path) or "/content"
+    chunks = []
+    chunk_idx = 0
+    with open(local_path, "rb") as f:
+        while True:
+            data = f.read(max_chunk_bytes)
+            if not data:
+                break
+            part_path = f"{local_path}.part_{chunk_idx:03d}"
+            with open(part_path, "wb") as pf:
+                pf.write(data)
+            chunks.append(part_path)
+            chunk_idx += 1
+
+    try:
+        print(f"[*] Large file ({file_size / (1024**2):.1f} MB) exceeds single upload threshold. Split into {len(chunks)} chunks...")
+        remote_parts = []
+        for i, part in enumerate(chunks):
+            part_name = f"{base_name}.part_{i:03d}"
+            r_part = f"{remote_dir}/{part_name}"
+            remote_parts.append(r_part)
+            print(f"    --> Uploading chunk {i+1}/{len(chunks)} ({os.path.getsize(part) / (1024**2):.1f} MB)...")
+            cmd = [colab_bin, "upload", part, r_part, "-s", session_name]
+            subprocess.run(cmd, check=True)
+
+        print(f"[*] Reassembling {len(remote_parts)} chunks into '{remote_path}' on Colab VM...")
+        reassemble_script = (
+            "import os, sys\n"
+            f"parts = {remote_parts!r}\n"
+            f"target_file = {remote_path!r}\n"
+            "with open(target_file, 'wb') as outfile:\n"
+            "    for p in parts:\n"
+            "        with open(p, 'rb') as infile:\n"
+            "            outfile.write(infile.read())\n"
+            "        os.remove(p)\n"
+            f"print(f'[Colab VM] Reassembled {{target_file}} ({{os.path.getsize(target_file) / (1024**2):.1f}} MB).')\n"
+        )
+        proc = subprocess.Popen(
+            [colab_bin, "exec", "-s", session_name, "--timeout", "120"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        out, _ = proc.communicate(input=reassemble_script)
+        if proc.returncode != 0:
+            raise RuntimeError(f"Failed to reassemble chunked file on remote VM: {out}")
+        print(f"[✓] Reassembly complete: {remote_path}")
+    finally:
+        for part in chunks:
+            if os.path.exists(part):
+                os.remove(part)
+
+
 def run_colab_training(
     canvas_size: int = 800,
     pixels_per_mm: float = 4.0,
@@ -189,8 +262,7 @@ def run_colab_training(
 
         if initial_weights is not None and os.path.exists(initial_weights):
             print(f"[*] Uploading initial weights ({os.path.getsize(initial_weights) / (1024**2):.1f} MB) to Colab VM...")
-            cmd_upload_w = [colab_bin, "upload", initial_weights, "/content/initial_weights.pt", "-s", session_name]
-            subprocess.run(cmd_upload_w, check=True)
+            upload_file_chunked(colab_bin, initial_weights, "/content/initial_weights.pt", session_name)
 
         if real_data_dir is not None and os.path.exists(real_data_dir):
             real_data_zip = os.path.join(project_root, "real_data_bundle.zip")
@@ -200,8 +272,7 @@ def run_colab_training(
             package_real_dataset_bundle(real_data_dir, real_data_zip)
             try:
                 print(f"[*] Uploading real dataset archive ({os.path.getsize(real_data_zip) / (1024**2):.1f} MB) to Colab VM...")
-                cmd_upload_data = [colab_bin, "upload", real_data_zip, "/content/real_data.zip", "-s", session_name]
-                subprocess.run(cmd_upload_data, check=True)
+                upload_file_chunked(colab_bin, real_data_zip, "/content/real_data.zip", session_name)
             finally:
                 if os.path.exists(real_data_zip):
                     os.remove(real_data_zip)
@@ -435,18 +506,18 @@ def run_colab_progressive_training(
 
         if initial_weights and os.path.exists(initial_weights):
             print(f"[+] Uploading initial weights '{initial_weights}'...")
-            cmd_up_w = [colab_bin, "upload", initial_weights, "/content/initial_weights.pt", "-s", session_name]
-            subprocess.run(cmd_up_w, check=True)
+            upload_file_chunked(colab_bin, initial_weights, "/content/initial_weights.pt", session_name)
             print("[✓] Initial weights uploaded.")
 
         if real_data_dir and os.path.exists(real_data_dir):
             print(f"[+] Archiving and uploading real target dataset '{real_data_dir}' (excluding raw photos)...")
             real_data_zip = os.path.join(project_root, "real_dataset_upload.zip")
             package_real_dataset_bundle(real_data_dir, real_data_zip)
-            cmd_up_d = [colab_bin, "upload", real_data_zip, "/content/real_dataset_upload.zip", "-s", session_name]
-            subprocess.run(cmd_up_d, check=True)
-            if os.path.exists(real_data_zip):
-                os.remove(real_data_zip)
+            try:
+                upload_file_chunked(colab_bin, real_data_zip, "/content/real_dataset_upload.zip", session_name)
+            finally:
+                if os.path.exists(real_data_zip):
+                    os.remove(real_data_zip)
             print("[✓] Real dataset uploaded.")
 
         # 4. Brief pause after upload to let Colab filesystem buffers settle
@@ -647,7 +718,7 @@ def run_colab_autolabel(
         print("[3/5] Uploading codebase archive and input images...")
         subprocess.run([colab_bin, "upload", bundle_zip, "/content/target_scorer_colab_bundle.zip", "-s", session_name], check=True)
         try:
-            subprocess.run([colab_bin, "upload", input_zip, "/content/autolabel_inputs.zip", "-s", session_name], check=True)
+            upload_file_chunked(colab_bin, input_zip, "/content/autolabel_inputs.zip", session_name)
         finally:
             if os.path.exists(input_zip):
                 os.remove(input_zip)
