@@ -634,7 +634,7 @@ def main():
     parser.add_argument("--amp", action="store_true", default=True, help="Enable automatic mixed precision (AMP)")
     parser.add_argument("--no-amp", dest="amp", action="store_false", help="Disable automatic mixed precision")
     parser.add_argument("--initial-weights", type=str, default=None, help="Path to existing weights checkpoint to warm-start/fine-tune from")
-    parser.add_argument("--real-data-dir", type=str, default=None, help="Path to real target dataset directory or manifest (enables real/hybrid training)")
+    parser.add_argument("--real-data-dir", type=str, default=None, help="Path to real target dataset directory or manifest (e.g. private/data/real_targets)")
     parser.add_argument("--real-ratio", type=float, default=0.35, help="Sampling probability for real target images (1.0 = pure real fine-tuning, 0.35 = hybrid)")
     parser.add_argument("--progressive", action="store_true", default=False, help="Run unified Progressive Resizing curriculum (256 -> 512 -> 768 -> 1024)")
     parser.add_argument("--progressive-stages", type=str, default=None, help="Custom comma-separated progressive stages schedule")

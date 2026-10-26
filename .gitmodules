@@ -1,0 +1,4 @@
+[submodule "private"]
+	path = private
+	url = git@github.com:aiannetti/aci-target-scorer-private-data.git
+	branch = main

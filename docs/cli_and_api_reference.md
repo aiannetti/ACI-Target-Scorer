@@ -148,7 +148,7 @@ target-scorer train [OPTIONS]
 ```bash
 target-scorer train \
   --progressive \
-  --real-data-dir datasets/real_targets \
+  --real-data-dir private/data/real_targets \
   --real-ratio 0.35 \
   --checkpoint-dir weights \
   --checkpoint weights/target_scoring_hrnet_1024_best.pt
@@ -176,7 +176,7 @@ target-scorer train \
   --batch-size 2 \
   --lr 5.0e-5 \
   --sigma 3.2 \
-  --real-data-dir datasets/real_targets \
+  --real-data-dir private/data/real_targets \
   --real-ratio 1.0 \
   --initial-weights weights/target_scoring_hrnet_1024_best.pt \
   --checkpoint weights/target_scoring_hrnet_1024_real_adapted.pt
@@ -290,7 +290,7 @@ target-scorer colab-progressive-train [OPTIONS]
 # Execute full 4-stage progressive cloud training on NVIDIA A100:
 target-scorer colab-progressive-train \
   --gpu A100 \
-  --real-data-dir datasets/real_targets \
+  --real-data-dir private/data/real_targets \
   --real-ratio 0.35
 ```
 
@@ -366,7 +366,7 @@ target-scorer autolabel [OPTIONS]
 | :--- | :--- | :--- | :--- |
 | `--image` | `str` | `None` | Path to a single target photograph to process. |
 | `--input-dir` | `str` | `None` | Directory of target photos to recursively batch auto-label. |
-| `--output-dir` | `str` | `datasets/real_targets` | Output directory where JSON annotations, canonical images, and review cards are saved. |
+| `--output-dir` | `str` | `private/data/real_targets` | Output directory where JSON annotations, canonical images, and review cards are saved (defaults to private submodule path). |
 | `--target` | `str` | `B-2` | NRA target type: `B-2` or `B-3`. |
 | `--checkpoint` | `str` | `weights/target_scoring_hrnet_1024_best.pt` | Path to model weights checkpoint. |
 | `--canvas-size` | `int` | `1024` | Canonical canvas resolution. |
@@ -412,7 +412,7 @@ from target_scorer.train import run_progressive_training, parse_progressive_stag
 best_checkpoint = run_progressive_training(
     stages=None,  # Uses DEFAULT_PROGRESSIVE_STAGES: (256, 512, 768, 1024)
     checkpoint_path="weights/target_scoring_hrnet_1024_best.pt",
-    real_data_dir="datasets/real_targets",
+    real_data_dir="private/data/real_targets",
     real_ratio=0.35,
     checkpoint_dir="weights",
 )
@@ -432,7 +432,7 @@ from target_scorer.colab_runner import run_colab_progressive_training
 primary_weights = run_colab_progressive_training(
     gpu="A100",
     high_mem=False,
-    real_data_dir="datasets/real_targets",
+    real_data_dir="private/data/real_targets",
     real_ratio=0.35,
     checkpoint_dir="weights",
     scorecards_dir="visual_inspection_reports",

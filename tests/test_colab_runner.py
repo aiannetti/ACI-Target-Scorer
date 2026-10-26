@@ -58,6 +58,10 @@ class TestColabPackaging(unittest.TestCase):
         with open(os.path.join(self.mock_repo, "autolabeled_photos", "photo2.png"), "w") as f:
             f.write("large auto-labeled photo dummy")
 
+        os.makedirs(os.path.join(self.mock_repo, "private", "data"), exist_ok=True)
+        with open(os.path.join(self.mock_repo, "private", "data", "photo3.png"), "w") as f:
+            f.write("private submodule data dummy")
+
         os.makedirs(os.path.join(self.mock_repo, "target_env", "bin"), exist_ok=True)
         with open(os.path.join(self.mock_repo, "target_env", "bin", "python"), "w") as f:
             f.write("python binary dummy")
@@ -96,6 +100,7 @@ class TestColabPackaging(unittest.TestCase):
             # Verify strictly excluded directories
             self.assertFalse(any("range_photos" in name for name in namelist))
             self.assertFalse(any("autolabeled_photos" in name for name in namelist))
+            self.assertFalse(any("private" in name for name in namelist))
             self.assertFalse(any("target_env" in name for name in namelist))
             self.assertFalse(any(".git" in name for name in namelist))
             self.assertFalse(any("__pycache__" in name for name in namelist))

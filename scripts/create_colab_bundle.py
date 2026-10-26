@@ -27,6 +27,7 @@ EXCLUDE_DIRS = {
     "weights",
     "visual_inspection_reports",
     "datasets",
+    "private",
     "range_photos",
     "autolabeled_photos",
     "samples",

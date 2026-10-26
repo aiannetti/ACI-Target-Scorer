@@ -196,7 +196,7 @@ shots, metrics = run_inference_and_scoring(
 # 1-Click Multi-Stage Progressive Cloud Training (Harmonic 256-Grid on NVIDIA A100)
 target-scorer colab-progressive-train \
     --gpu A100 \
-    --real-data-dir datasets/real_targets \
+    --real-data-dir private/data/real_targets \
     --real-ratio 0.35
 
 # Standalone execution script
@@ -210,7 +210,7 @@ target-scorer colab-train \
     --batch-size 8 \
     --lr 1.0e-4 \
     --gpu A100 \
-    --real-data-dir datasets/real_targets \
+    --real-data-dir private/data/real_targets \
     --real-ratio 0.35 \
     --initial-weights weights/target_scoring_hrnet_1024_best.pt
 
@@ -235,7 +235,7 @@ target-scorer colab-autolabel \
 # Harmonic 256-Grid Progressive Resizing locally (256 -> 512 -> 768 -> 1024)
 target-scorer train \
     --progressive \
-    --real-data-dir datasets/real_targets \
+    --real-data-dir private/data/real_targets \
     --real-ratio 0.35 \
     --checkpoint-dir weights \
     --checkpoint weights/target_scoring_hrnet_1024_best.pt
@@ -259,7 +259,7 @@ target-scorer train \
     --batch-size 2 \
     --lr 5.0e-5 \
     --sigma 3.2 \
-    --real-data-dir datasets/real_targets \
+    --real-data-dir private/data/real_targets \
     --real-ratio 1.0 \
     --initial-weights weights/target_scoring_hrnet_1024_best.pt \
     --checkpoint weights/target_scoring_hrnet_1024_real_adapted.pt
@@ -268,7 +268,7 @@ target-scorer train \
 ### E. Interactive Annotation GUI (`target-scorer annotate`)
 ```bash
 # Launch interactive GUI on auto-labeled targets
-target-scorer annotate datasets/real_targets
+target-scorer annotate private/data/real_targets
 ```
 
 ### F. Assisted Auto-Labeling & Active Learning (`target-scorer autolabel`)
@@ -277,7 +277,7 @@ target-scorer annotate datasets/real_targets
 target-scorer autolabel \
     --image /path/to/phone_target.jpg \
     --target B-2 \
-    --output-dir datasets/real_targets \
+    --output-dir private/data/real_targets \
     --checkpoint weights/target_scoring_hrnet_1024_best.pt \
     --threshold 0.40
 
@@ -285,7 +285,7 @@ target-scorer autolabel \
 target-scorer autolabel \
     --input-dir /path/to/range_photos/ \
     --target B-3 \
-    --output-dir datasets/real_targets \
+    --output-dir private/data/real_targets \
     --checkpoint weights/target_scoring_hrnet_1024_best.pt \
     --threshold 0.40 \
     --redact-pii

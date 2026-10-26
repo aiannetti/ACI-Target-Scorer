@@ -441,9 +441,10 @@ The GUI manages three distinct coordinate systems:
 
 ### C. Asset Synchronization & Copy-On-Save Pipeline
 When verifying real-world target sets, the editor features an automated `copy-on-save` synchronization pipeline:
-* **User Path Expansion:** Automatically parses relative and tilde (`~`) paths (e.g., `~/datasets/real_targets`).
+* **User Path Expansion:** Automatically parses relative and tilde (`~`) paths (e.g., `~/private/data/real_targets` or `private/data/real_targets`).
 * **Multi-Format Raw Resolution:** Resolves raw smartphone photographs (`.jpg`, `.jpeg`, `.png`, `.heic`, `.dng`, `.nef`, `.cr2`) using embedded annotation metadata or cross-directory heuristic search.
 * **Strict Artifact Segregation:** Automatically synchronizes `canonical_1024/`, `annotations/`, and `raw/` subdirectories while strictly isolating burnt-in HUD review cards (`*_review.png`) to avoid polluting clean model inputs.
+* **Private Submodule Isolation:** Sensitive competition target sets and verified human annotations are mounted via the private Git submodule at `private/` (`data/real_targets/`), isolated from the public codebase and excluded from automatic codebase cloud bundles.
 
 ---
 

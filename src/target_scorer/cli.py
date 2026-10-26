@@ -54,7 +54,7 @@ def autolabel_cli():
     parser = argparse.ArgumentParser(prog="target-scorer autolabel", description="Assisted Auto-Labeling for Real Target Datasets")
     parser.add_argument("--image", type=str, default=None, help="Path to single input target photograph")
     parser.add_argument("--input-dir", type=str, default=None, help="Directory of target photographs to batch auto-label")
-    parser.add_argument("--output-dir", type=str, default="datasets/real_targets", help="Directory to save annotations and review cards")
+    parser.add_argument("--output-dir", type=str, default="private/data/real_targets", help="Directory to save annotations and review cards (defaults to private submodule path 'private/data/real_targets')")
     parser.add_argument("--target", type=str, default="B-2", choices=["B-2", "B-3", "b-2", "b-3"], help="NRA target type")
     parser.add_argument("--checkpoint", type=str, default="weights/target_scoring_hrnet_1024_best.pt", help="Path to model weights")
     parser.add_argument("--canvas-size", type=int, default=1024, help="Canonical canvas dimension")
@@ -150,7 +150,7 @@ def annotate_cli():
         type=str,
         nargs="?",
         default=None,
-        help="Path to directory containing JSON annotations (e.g. autolabeled_photos/B-3 or datasets/real_targets) or single JSON file"
+        help="Path to directory containing JSON annotations (e.g. autolabeled_photos/B-3 or private/data/real_targets) or single JSON file"
     )
     parser.add_argument(
         "--dir",

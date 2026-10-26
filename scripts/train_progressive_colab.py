@@ -37,7 +37,9 @@ def run_pipeline(gpu: str = "A100"):
 
     ckpt_dir = str(PROJECT_ROOT / "weights")
     scorecards_dir = str(PROJECT_ROOT / "visual_inspection_reports")
-    real_targets_dir = str(PROJECT_ROOT / "datasets" / "real_targets")
+    real_targets_dir = str(PROJECT_ROOT / "private" / "data" / "real_targets")
+    if not os.path.exists(real_targets_dir):
+        real_targets_dir = str(PROJECT_ROOT / "datasets" / "real_targets")
     use_real = os.path.exists(real_targets_dir)
 
     # Run the unified progressive cloud curriculum

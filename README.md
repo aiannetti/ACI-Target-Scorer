@@ -71,25 +71,25 @@ target-scorer infer \
   --output scored_card_b3.png
 
 # 2. Launch Interactive Annotation Editor & Eagle Eye Loupe
-target-scorer annotate datasets/real_targets
+target-scorer annotate private/data/real_targets
 
 # 3. 1-Click Multi-Stage Progressive Cloud Training (Harmonic 256-Grid on NVIDIA A100)
 target-scorer colab-progressive-train \
   --gpu A100 \
-  --real-data-dir datasets/real_targets \
+  --real-data-dir private/data/real_targets \
   --real-ratio 0.35
 
 # 4. Local Progressive Resizing Training (256 -> 512 -> 768 -> 1024)
 target-scorer train \
   --progressive \
-  --real-data-dir datasets/real_targets \
+  --real-data-dir private/data/real_targets \
   --real-ratio 0.35 \
   --checkpoint weights/target_scoring_hrnet_1024_best.pt
 
 # 5. Batch auto-label a directory of range photos with PII redaction
 target-scorer autolabel \
   --input-dir /path/to/range_photos \
-  --output-dir datasets/real_targets \
+  --output-dir private/data/real_targets \
   --target B-3 \
   --threshold 0.40 \
   --redact-pii
@@ -170,6 +170,9 @@ target_scorer/
 │           └── dataset.py        # Procedural PyTorch dataset with compression jitter
 ├── datasets/
 │   └── calibration_targets/      # Sample calibration targets with raw photos & ground truth JSON
+├── private/                      # Private Git Submodule (aci-target-scorer-private-data)
+│   └── data/
+│       └── real_targets/         # Sensitive competition target photos, canonical crops & JSON
 ├── tests/
 │   ├── test_progressive_training.py # Dynamic spatial resizing & progressive curriculum test suite
 │   ├── test_synthetic_holes.py   # Procedural holes, 3-tone voids, 4-zone placement & zero-heatmap markings
@@ -238,6 +241,35 @@ pip install google-colab-cli
 colab auth
 colab usage
 ```
+
+---
+
+## Private Target Data & Submodule Configuration
+
+To preserve competitor privacy and protect sensitive physical range target photographs, real-world training datasets are strictly segregated from the public codebase:
+
+* **Public Repository (`ACI-Target-Scorer`):** Contains the complete algorithm codebase, mathematical metrology engines, synthetic target generators, calibration datasets (`datasets/calibration_targets`), and pre-trained weights (`weights/`).
+* **Private Submodule (`private`):** Tracks the private GitHub repository [`aci-target-scorer-private-data`](https://github.com/aiannetti/aci-target-scorer-private-data) as an official **private Git submodule** mounted at `private/`. It stores raw range photographs, rectified $1024 \times 1024$ canonical crops, and verified JSON annotations in `private/data/real_targets/`.
+
+### Cloning Instructions:
+
+* **Public Users (Standard Clone):**
+  ```bash
+  git clone https://github.com/aiannetti/ACI-Target-Scorer.git
+  cd ACI-Target-Scorer
+  # Operates completely offline with synthetic data generation and calibration targets
+  ```
+  *(The `private/` folder remains empty and is ignored during normal public operation.)*
+
+* **Authorized Collaborators (Clone with Submodule):**
+  ```bash
+  # Clone parent repo and automatically populate private dataset via SSH:
+  git clone --recurse-submodules git@github.com:aiannetti/ACI-Target-Scorer.git
+  cd ACI-Target-Scorer
+
+  # Or initialize the submodule inside an existing clone:
+  git submodule update --init --recursive
+  ```
 
 ---
 

@@ -480,7 +480,7 @@ class AnnotationEditor(tk.Tk):
 
         # Export on Save settings
         self.copy_on_save_var = tk.BooleanVar(value=bool(copy_to_dir))
-        default_dest = str(copy_to_dir) if copy_to_dir else "datasets/real_targets"
+        default_dest = str(copy_to_dir) if copy_to_dir else "private/data/real_targets"
         self.copy_dir_var = tk.StringVar(value=default_dest)
 
         self._build_ui()
@@ -491,6 +491,8 @@ class AnnotationEditor(tk.Tk):
             self.load_path(target_dir_or_file)
         else:
             default_dir = Path("autolabeled_photos")
+            if not default_dir.exists():
+                default_dir = Path("private/data/real_targets")
             if not default_dir.exists():
                 default_dir = Path("datasets/real_targets")
             if default_dir.exists():
@@ -1057,6 +1059,7 @@ class AnnotationEditor(tk.Tk):
             Path("range_photos") / ann.target_type / "JPEG",
             Path("range_photos") / ann.target_type,
             Path("range_photos"),
+            Path("private/data/real_targets/raw"),
             Path("datasets/real_targets/raw"),
             Path("datasets/calibration_targets/raw"),
         ]

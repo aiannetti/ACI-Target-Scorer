@@ -812,7 +812,7 @@ def main():
     parser.add_argument("--sigma", type=float, default=None, help="Gaussian heatmap sigma in pixels (e.g. 3.2)")
     parser.add_argument("--timeout", type=float, default=3600.0, help="Maximum execution timeout in seconds")
     parser.add_argument("--initial-weights", type=str, default=None, help="Path to local weights checkpoint to warm-start/fine-tune from in Colab")
-    parser.add_argument("--real-data-dir", type=str, default=None, help="Path to local real target dataset directory to upload for training")
+    parser.add_argument("--real-data-dir", type=str, default=None, help="Path to local real target dataset directory to upload for training (e.g. private/data/real_targets)")
     parser.add_argument("--real-ratio", type=float, default=0.35, help="Sampling probability for real target images (1.0 = pure real fine-tuning, 0.35 = hybrid)")
     parser.add_argument("--progressive", action="store_true", default=False, help="Run unified Progressive Resizing curriculum (256 -> 512 -> 768 -> 1024)")
     parser.add_argument("--progressive-stages", type=str, default=None, help="Custom comma-separated progressive stages schedule")

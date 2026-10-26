@@ -89,7 +89,7 @@ Place your raw photos in a folder (e.g. `raw_range_snaps/`) and run:
 ```bash
 target-scorer autolabel \
   --input-dir raw_range_snaps/ \
-  --output-dir datasets/real_targets \
+  --output-dir private/data/real_targets \
   --target B-3 \
   --checkpoint weights/target_scoring_hrnet_1024_best.pt \
   --canvas-size 1024 \
@@ -107,7 +107,7 @@ During auto-labeling, candidate detections pass through the [`filter_spurious_pe
 * **Physical Void Verification:** Confirms that candidate detections contain authentic optical depth (dark trap void, tan cardboard backer, or scanner white surrounded by a dark lead wipe grease ring).
 
 ### Generated Triplet per Target Card:
-For each photo `target_042.jpg`, the auto-labeler writes three files into `datasets/real_targets/`:
+For each photo `target_042.jpg`, the auto-labeler writes three files into `private/data/real_targets/` (managed within the private Git submodule):
 1. **`target_042_canonical.png`**: Rectified $1024 \times 1024$ image ($4.0\text{ px/mm}$) ready for PyTorch data loaders.
 2. **`target_042.json`**: Ground-truth candidate annotation matching the [`TargetAnnotation`](file:///home/antho/target_scorer/src/target_scorer/data/schema.py) schema.
 3. **`target_042_review.png`**: High-contrast visual card with green crosshairs, caliber circles, and HUD banner for rapid human inspection.
@@ -125,7 +125,7 @@ Browse through the generated `*_review.png` images in your image viewer. If a ta
 For cards requiring adjustment, launch the editor:
 
 ```bash
-target-scorer annotate datasets/real_targets
+target-scorer annotate private/data/real_targets
 ```
 
 1. **Navigate to Card:** Press `N` / `P` to step through the dataset.
@@ -176,7 +176,7 @@ Progressive Resizing trains a single [`HighResHeatmapUNet`](file:///home/antho/t
 ```bash
 target-scorer train \
   --progressive \
-  --real-data-dir datasets/real_targets \
+  --real-data-dir private/data/real_targets \
   --real-ratio 0.35 \
   --checkpoint-dir weights \
   --checkpoint weights/target_scoring_hrnet_1024_best.pt
@@ -200,7 +200,7 @@ target-scorer train \
   --batch-size 2 \
   --lr 1.0e-4 \
   --sigma 3.2 \
-  --real-data-dir datasets/real_targets \
+  --real-data-dir private/data/real_targets \
   --real-ratio 0.35 \
   --initial-weights weights/target_scoring_hrnet_1024_best.pt \
   --checkpoint weights/target_scoring_hrnet_1024_hybrid.pt
@@ -238,7 +238,7 @@ Runs the entire 4-stage curriculum ($256 \to 512 \to 768 \to 1024$) in a **singl
 ```bash
 target-scorer colab-progressive-train \
   --gpu A100 \
-  --real-data-dir datasets/real_targets \
+  --real-data-dir private/data/real_targets \
   --real-ratio 0.35
 ```
 *(Or run the standalone runner script: `python scripts/train_progressive_colab.py A100`)*
@@ -253,14 +253,14 @@ target-scorer colab-train \
   --lr 1.0e-4 \
   --sigma 3.2 \
   --gpu A100 \
-  --real-data-dir datasets/real_targets \
+  --real-data-dir private/data/real_targets \
   --real-ratio 0.35 \
   --initial-weights weights/target_scoring_hrnet_1024_best.pt
 ```
 
 ### What Happens Automatically:
 1. Queries your Colab compute unit balance (`colab usage`).
-2. Bundles the codebase and packages `datasets/real_targets/` (filtering raw unrectified camera images and review cards).
+2. Bundles the codebase and packages `private/data/real_targets/` (filtering raw unrectified camera images and review cards).
 3. Provisions a cloud VM with an **NVIDIA A100 40GB** or **T4 16GB** GPU.
 4. Uploads code, weights, and real data; installs dependencies in remote venv.
 5. Runs mixed-precision training across all stages in ~6–8 minutes.

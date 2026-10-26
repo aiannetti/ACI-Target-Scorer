@@ -28,14 +28,14 @@ You can launch the editor against a directory of auto-labeled targets, a dataset
 # Launch on auto-labeled target directory
 target-scorer annotate autolabeled_photos/B-3
 
-# Launch on a specific dataset folder
-target-scorer annotate datasets/real_targets
+# Launch on a specific dataset folder (private submodule)
+target-scorer annotate private/data/real_targets
 
 # Launch on a specific JSON file with forced NRA B-2 Slow Fire rules
-target-scorer annotate datasets/real_targets/target_001.json --target B-2
+target-scorer annotate private/data/real_targets/B-2/annotations/target_001.json --target B-2
 ```
 
-If no path argument is provided, the editor automatically scans default locations (`autolabeled_photos/`, `datasets/real_targets/`) and loads the first valid annotation index found.
+If no path argument is provided, the editor automatically scans default locations (`autolabeled_photos/`, `private/data/real_targets/`, `datasets/real_targets/`) and loads the first valid annotation index found.
 
 ---
 
@@ -45,7 +45,7 @@ If no path argument is provided, the editor automatically scans default location
 ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ [📁 Open Dir] [◀ Prev] target_005.json [1/12] [Next ▶] | Mode: (•) Shots ( ) Bull | Caliber: [.22 LR] │ [☀️ Light / 🌙 Dark] [💾 Save (Ctrl+S)] [↺ Revert] [✕ Clear]
 ├────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ [✓] Copy on Save to directory: [datasets/real_targets                             ] [📁 Browse...] (copies all assets) │
+│ [✓] Copy on Save to directory: [private/data/real_targets                         ] [📁 Browse...] (copies all assets) │
 ├──────────────────────────────────────────────────────────────────────────────┬─────────────────────────────────────────┤
 │ [Fit] [100%] [Zoom +] [Zoom -] 150% [Switch] Rings [Switch] Spread [Switch] Badges │ NRA TARGET SPECIFICATION        │
 │                                                                              │ Target: NRA B-3 (50ft Rapid)            │
@@ -243,7 +243,7 @@ Press `Ctrl+S` (or click **💾 Save JSON & Review**). This executes an atomic u
 
 #### Optional Auto-Copy to Directory on Save:
 When reviewing targets from a staging folder (such as `autolabeled_photos/B-2/JPEG/`), enable **"Copy on Save to directory:"** directly below the top toolbar (or pass `--copy-to-dir <PATH>` on launch):
-* **Select Destination:** Click **📁 Browse Destination...** or type a path (e.g. `datasets/real_targets` or `datasets/real_targets/B-2`).
+* **Select Destination:** Click **📁 Browse Destination...** or type a path (e.g. `private/data/real_targets` or `private/data/real_targets/B-2`).
 * **Automatic Assets Copied:**
   * **Annotation JSON:** Updated verified `.json` file.
   * **Canonical Image:** The rectified `*_canonical.png` ($1024 \times 1024$).
