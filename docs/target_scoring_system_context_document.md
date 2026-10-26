@@ -8,7 +8,7 @@ The architecture decouples geometric normalization from neural coordinate regres
 1. **Classical Geometric Rectification:** Automatically locates the aiming black in high-resolution, unconstrained photos, estimates perspective tilt via algebraic ellipse fitting, and warps the target into an exact metric-calibrated canonical plane adhering to the **Harmonic 256-Grid Progression** ($256 \times 256$, $512 \times 512$, $768 \times 768$, and competition-standard **$1024 \times 1024$** at $4.0\text{ px/mm}$).
 2. **Deep Continuous Heatmap Regression:** A High-Resolution Feature Pyramid U-Net ([`HighResHeatmapUNet`](file:///home/antho/target_scorer/src/target_scorer/models/unet.py)) regresses sub-pixel Gaussian heatmaps for bullet impacts (Channel 0) and bullseye centers (Channel 1).
 3. **Ballistic Metrology & Inward Scoring:** A 2D Taylor-series sub-pixel peak extractor calculates continuous coordinates, applies multi-layer defense-in-depth spurious peak filtering (void verification, ink chroma tests, line aspect ratio, seal/header masking), applies official NRA Rule 14.3 inward break scoring, and generates a visual diagnostic HUD with group dispersion statistics (Extreme Spread, Mean Radius, Windage/Elevation bias).
-4. **Privacy & Redaction:** Automated competitor registration handwriting masking (`--redact-pii`) for competition compliance.
+4. **Privacy, Security & Strict Dataset Isolation:** Automated competitor registration handwriting masking (`--redact-pii`) for competition compliance, strict physical dataset isolation via the private submodule `aci-target-scorer-private-data` (`private/data/real_targets`), and Git history scrubbing with `git-filter-repo` (purging historical commit `9a8e897`) to prevent proprietary/PII leaks.
 5. **Interactive Desktop GUI & Virtual Loupe:** [`annotation_editor.py`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py) provides real-time point-and-click marker adjustments and an optical **Eagle Eye Scoring Gauge** dialog simulating physical 4x–12x scoring magnifiers.
 
 ```
@@ -123,6 +123,14 @@ The **Harmonic 256-Grid Progression** enforces uniform step properties ($+256\te
   The ring label assigned satisfies: $\min \{R_i \mid d_{\text{gauge}} \le R_i\}$.
 * **Input Validation:**
   Rigorous assertions enforce finite numerical coordinates (`math.isfinite(bullet_diameter_mm)`, `math.isfinite(bull_x)`, `math.isfinite(sx)`).
+
+### F. Security Architecture: Git History Scrubbing & Strict Dataset Isolation
+* **Competitor PII & Privacy Threat Model:** Competition target scans and raw photographs carry sensitive shooter metadata (handwritten competitor names, club identifiers, relay stickers, and scoring official signatures).
+* **Strict Physical Dataset Segregation:** To eliminate data leakage vectors, all proprietary match targets, raw unrectified photographs, and real annotated datasets are strictly segregated into the private submodule `aci-target-scorer-private-data` (located at `private/data/real_targets`). The main `ACI-Target-Scorer` repository contains only synthetic generators, synthetic calibration targets ([`datasets/calibration_targets/`](file:///home/antho/target_scorer/datasets/calibration_targets/)), model architectures, and open toolchains.
+* **Historical Commit Scrubbing (`git-filter-repo`):** Real target photographs were historically committed in commit `9a8e897` under `datasets/real_targets`. To permanently eliminate these artifacts from Git history and purge them from the packfiles:
+  * The project strictly mandates [`git-filter-repo`](https://github.com/newren/git-filter-repo) instead of the officially deprecated, corruptible, and incomplete `git filter-branch`.
+  * `git-filter-repo --path datasets/real_targets --invert-paths` rewrites the commit graph, recalculates deterministic tree/commit SHAs, and purges all unreferenced blob objects.
+  * Developers must resynchronize via `git fetch origin && git reset --hard origin/<branch>` and `git submodule update --init --recursive` rather than running `git pull`/`git merge` (which would resurrect scrubbed blobs).
 
 ---
 

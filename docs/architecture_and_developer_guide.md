@@ -19,6 +19,7 @@ This document details the engineering principles, mathematical formulations, coo
 12. [TargetAnnotation JSON Schema & Data Model](#12-targetannotation-json-schema--data-model)
 13. [Desktop Metrology GUI & Sun Valley Design System](#13-desktop-metrology-gui--sun-valley-design-system)
 14. [Cloud Training & Remote Transport Architecture](#14-cloud-training--remote-transport-architecture)
+15. [Git Repository Hygiene & Sensitive Asset Scrubbing Standard](#15-git-repository-hygiene--sensitive-asset-scrubbing-standard)
 
 ---
 
@@ -541,4 +542,67 @@ When a `colab-*` subcommand executes, `colab_runner.py` resolves the executable 
 1. System `$PATH` lookup via `shutil.which("colab")`.
 2. User local binary directory: `~/.local/bin/colab`.
 3. If neither path exists, raises an explicit `FileNotFoundError` providing copy-pasteable installation instructions.
+
+---
+
+## 15. Git Repository Hygiene & Sensitive Asset Scrubbing Standard
+
+Competition target photographs from live shooting matches frequently contain sensitive competitor Personally Identifiable Information (PII), such as handwritten shooter names, competitor bib/relay stickers, club identifiers, and target batch markings.
+
+While modern operational workflows strictly enforce automated margin blurring via `--redact-pii` during auto-labeling, raw unredacted photographs were historically committed to repository history in commit `9a8e897` under `datasets/real_targets`. To uphold stringent data privacy and prevent PII leakage, the project established a strict physical dataset isolation architecture paired with automated Git history scrubbing.
+
+### A. Strict Physical Dataset Isolation Architecture
+To guarantee that proprietary target imagery, unredacted high-resolution scans, and competitor PII cannot accidentally be leaked into public or open-source remotes:
+1. **Decoupled Private Submodule (`aci-target-scorer-private-data`):**
+   All proprietary match photographs, raw multi-format images, and verified real annotations are stored strictly inside a standalone private Git repository integrated as a submodule at `private/data/` or tracked externally.
+2. **Clean Public Repository Envelope:**
+   The primary `ACI-Target-Scorer` repository contains exclusively open-source code, synthetic target generators ([`src/target_scorer/synthetic/`](file:///home/antho/target_scorer/src/target_scorer/synthetic/)), standardized synthetic calibration targets ([`datasets/calibration_targets/`](file:///home/antho/target_scorer/datasets/calibration_targets/)), model architectures, and unit tests.
+3. **Automated `.gitignore` Safeguards:**
+   Top-level `.gitignore` rules permanently exclude `datasets/real_targets`, `autolabeled_photos/`, `private/`, and `*.raw`/`*.dng`/`*.heic` formats from standard staging.
+
+### B. Historical Scrubbing Standard: `git-filter-repo` vs. `git filter-branch`
+To permanently eliminate the historical commit `9a8e897` and purge all legacy references to `datasets/real_targets` from the Git object database, the project mandates the use of [`git-filter-repo`](https://github.com/newren/git-filter-repo).
+
+#### Why `git filter-branch` is Strictly Deprecated:
+Official Git documentation formally deprecates `git filter-branch` due to structural limitations:
+* **Severe Performance Bottlenecks:** `git filter-branch` executes a subshell and checks out files on every commit sequentially, taking hours on medium-sized histories.
+* **Incomplete Scrubbing & Leaked Blobs:** `git filter-branch` retains original unscrubbed refs under `refs/original/`, meaning underlying blob objects remain in the packfiles and can be recovered.
+* **Corrupted Graph History:** Frequently mangles commit timestamps, tag signatures, and merge commits across complex branches.
+
+#### Why `git-filter-repo` is Mandated:
+* **Atomic Object-Level Rewriting:** Operates directly on Git fast-export / fast-import streams in Python/C, rewriting repository history in seconds.
+* **True Blob Deletion:** Completely prunes deleted paths from tree objects and packfiles (`--path datasets/real_targets --invert-paths`), ensuring zero residual data remains on disk.
+* **Deterministic Commit Hash Recalculation:** Rewrites commit SHAs, adjusts parent pointers, prunes empty commits, and updates all refs and tags cleanly in a single atomic pass.
+
+### C. Developer Instructions: Handling Rewritten Git History
+When repository history is scrubbed with `git-filter-repo`, all commit hashes downstream of the scrub point (`9a8e897`) are rewritten. Existing local clones will detect branch divergence (`[rejected - non-fast-forward]`).
+
+Developers must synchronize their local checkouts using the following procedure:
+
+#### Step 1: Discard Stale Local History and Align with Clean Remote
+Do **not** run `git pull` or `git merge origin/main`, as merging will reintroduce the deleted blobs from your local history back into the repository tree!
+
+```bash
+# Fetch the rewritten history from origin
+git fetch origin
+
+# Hard reset your active branch to match the scrubbed remote origin exactly
+git reset --hard origin/main
+# (or if working on a feature branch: git reset --hard origin/<branch-name>)
+```
+
+#### Step 2: Re-synchronize Private Dataset Submodule
+```bash
+# Initialize and update the private data submodule cleanly
+git submodule sync
+git submodule update --init --recursive
+```
+
+#### Step 3: Expire Reflogs and Purge Orphaned Local Objects
+To reclaim disk space and ensure no orphaned blobs linger in local storage:
+```bash
+git reflog expire --expire=now --all
+git gc --prune=now --aggressive
+```
+
 
