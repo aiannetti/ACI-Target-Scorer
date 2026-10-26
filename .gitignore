@@ -57,3 +57,6 @@ htmlcov/
 # Scratch & test output images
 scratch/
 scored_card_b2.png
+
+# Private datasets / sub-repositories
+private/
