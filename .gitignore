@@ -41,7 +41,6 @@ scored_target_*.png
 # Local photo datasets and autolabeled caches
 range_photos/
 autolabeled_photos/
-datasets/real_targets/
 
 # PyTorch checkpoints (optional - allow specific weights)
 *.tmp
