@@ -106,6 +106,18 @@ def autolabel_cli():
         sys.exit(1)
 
 
+def colab_cli():
+    try:
+        colab_main()
+    except FileNotFoundError as e:
+        print(f"[-] Error: {e}")
+        print("    To use Google Colab cloud orchestration, install the CLI:")
+        print("        pip install google-colab-cli")
+        print("    Then authenticate your Google account:")
+        print("        colab login")
+        sys.exit(1)
+
+
 def colab_autolabel_cli():
     from target_scorer.colab_runner import run_colab_autolabel
     parser = argparse.ArgumentParser(prog="target-scorer colab-autolabel", description="Cloud-Accelerated Assisted Auto-Labeling on Google Colab CLI")
@@ -122,19 +134,27 @@ def colab_autolabel_cli():
     parser.add_argument("--redact-pii", action="store_true", default=False, help="Redact competitor margin registration info (Name, NRA#, etc.)")
     args = parser.parse_args(sys.argv[2:])
 
-    run_colab_autolabel(
-        input_dir=args.input_dir,
-        output_dir=args.output_dir,
-        target_type=args.target.upper(),
-        checkpoint=args.checkpoint,
-        canvas_size=args.canvas_size,
-        pixels_per_mm=args.scale,
-        threshold=args.threshold,
-        gpu=args.gpu,
-        session_name=args.session,
-        timeout_seconds=args.timeout,
-        redact_pii=args.redact_pii,
-    )
+    try:
+        run_colab_autolabel(
+            input_dir=args.input_dir,
+            output_dir=args.output_dir,
+            target_type=args.target.upper(),
+            checkpoint=args.checkpoint,
+            canvas_size=args.canvas_size,
+            pixels_per_mm=args.scale,
+            threshold=args.threshold,
+            gpu=args.gpu,
+            session_name=args.session,
+            timeout_seconds=args.timeout,
+            redact_pii=args.redact_pii,
+        )
+    except FileNotFoundError as e:
+        print(f"[-] Error: {e}")
+        print("    To use Google Colab cloud orchestration, install the CLI:")
+        print("        pip install google-colab-cli")
+        print("    Then authenticate your Google account:")
+        print("        colab login")
+        sys.exit(1)
 
 
 def annotate_cli():
@@ -211,10 +231,10 @@ def main():
         train_main()
     elif subcommand == "colab-train":
         sys.argv = [sys.argv[0]] + sys.argv[2:]
-        colab_main()
+        colab_cli()
     elif subcommand == "colab-progressive-train":
         sys.argv = [sys.argv[0], "--progressive"] + sys.argv[2:]
-        colab_main()
+        colab_cli()
     elif subcommand == "colab-autolabel":
         colab_autolabel_cli()
     elif subcommand == "rectify":

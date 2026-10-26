@@ -56,6 +56,30 @@ class TestCLIDispatcher(unittest.TestCase):
                 self.assertIn("--copy-to-dir", output)
                 self.assertIn("--target", output)
 
+    def test_colab_train_missing_cli_handled_gracefully(self):
+        """Verifies colab-train gracefully handles missing colab executable."""
+        with patch.object(sys, "argv", ["target-scorer", "colab-train"]):
+            with patch("target_scorer.cli.colab_main", side_effect=FileNotFoundError("Colab CLI not found")):
+                with patch("sys.stdout", new=StringIO()) as fake_out:
+                    with self.assertRaises(SystemExit) as cm:
+                        cli_main()
+                    self.assertEqual(cm.exception.code, 1)
+                    output = fake_out.getvalue()
+                    self.assertIn("pip install google-colab-cli", output)
+                    self.assertIn("colab login", output)
+
+    def test_colab_autolabel_missing_cli_handled_gracefully(self):
+        """Verifies colab-autolabel gracefully handles missing colab executable."""
+        with patch.object(sys, "argv", ["target-scorer", "colab-autolabel", "--input-dir", "fake_dir"]):
+            with patch("target_scorer.colab_runner.run_colab_autolabel", side_effect=FileNotFoundError("Colab CLI not found")):
+                with patch("sys.stdout", new=StringIO()) as fake_out:
+                    with self.assertRaises(SystemExit) as cm:
+                        cli_main()
+                    self.assertEqual(cm.exception.code, 1)
+                    output = fake_out.getvalue()
+                    self.assertIn("pip install google-colab-cli", output)
+                    self.assertIn("colab login", output)
+
 
 if __name__ == "__main__":
     unittest.main()

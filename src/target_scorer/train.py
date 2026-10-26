@@ -359,6 +359,9 @@ def run_training(
     print("=" * 72, flush=True)
     print(f"[✓] Training complete. Optimal checkpoint: {checkpoint_path}", flush=True)
     print(f"[✓] Peak accuracy achieved: {best_mre:.3f} mm sub-pixel error.", flush=True)
+    del train_loader, val_loader, train_dataset, val_dataset
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     return checkpoint_path
 
 
