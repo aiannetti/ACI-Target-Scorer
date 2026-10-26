@@ -218,10 +218,19 @@ The synthetic generator package ([`src/target_scorer/synthetic/`](file:///home/a
 
 For zero-setup, accelerated cloud training on NVIDIA A100 or T4 GPUs without heating up local hardware, use the automated Colab CLI orchestrators.
 
-### Prerequisites:
-Install and authenticate the Google Colab CLI:
+### Prerequisites & Installation:
+Cloud GPU commands (`colab-train`, `colab-progressive-train`, and `colab-autolabel`) require the optional Google Colab CLI:
+
 ```bash
+# 1. Install Google Colab CLI via uv (recommended) or pip:
+uv tool install google-colab-cli
+# Or: pip install google-colab-cli
+
+# 2. Authenticate with your Google account (opens OAuth browser authorization):
 colab auth
+
+# 3. Verify your available compute unit balance and rate:
+colab usage
 ```
 
 ### A. 1-Click Multi-Stage Progressive Cloud Training (A100 / T4)

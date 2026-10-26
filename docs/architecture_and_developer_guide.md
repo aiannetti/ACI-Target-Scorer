@@ -520,3 +520,24 @@ If competition datasets scale beyond several gigabytes (> 2 GB), two high-throug
 * **`colab ssh --proxy-mode` (SCP Stream):** Piping streaming archives directly over the OpenSSH WebSocket bridge.
 * **Google Cloud Storage (GCS) Direct Bucket Transfer:** Mounting or streaming pre-staged cloud buckets directly into the Colab VM via `gsutil` or GCS FUSE.
 
+### E. Optional Google Colab CLI Installation & Binary Resolution
+Local inference and training operate entirely offline and self-contained without external dependencies. However, for users wishing to harness cloud GPU acceleration via `target-scorer colab-train`, `colab-progressive-train`, or `colab-autolabel`, the `google-colab-cli` tool provides the underlying VM orchestration.
+
+#### Installation:
+```bash
+# Recommended via uv tool:
+uv tool install google-colab-cli
+
+# Or via standard pip:
+pip install google-colab-cli
+
+# Interactive Google OAuth authentication:
+colab auth
+```
+
+#### Binary Resolution Pipeline ([`get_colab_bin`](file:///home/antho/target_scorer/src/target_scorer/colab_runner.py#L18-L26)):
+When a `colab-*` subcommand executes, `colab_runner.py` resolves the executable using deterministic fallbacks:
+1. System `$PATH` lookup via `shutil.which("colab")`.
+2. User local binary directory: `~/.local/bin/colab`.
+3. If neither path exists, raises an explicit `FileNotFoundError` providing copy-pasteable installation instructions.
+

@@ -227,16 +227,26 @@ uv pip install -e .
 
 # 5. Verify CUDA acceleration
 python -c "import torch; print('CUDA Available:', torch.cuda.is_available(), '| Device:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
+
+# 6. (Optional) Install Google Colab CLI for 1-Click Cloud GPU Acceleration (A100 / T4)
+# Required only if you plan to run cloud training/auto-labeling via 'target-scorer colab-*'
+uv tool install google-colab-cli
+# Or via pip:
+pip install google-colab-cli
+
+# Authenticate with your Google account and verify compute balance
+colab auth
+colab usage
 ```
 
 ---
 
 ## Automated Test Suite
 
-Run the full battery of 103 unit, progressive, metrology, and regression tests:
+Run the full battery of 111 unit, progressive, metrology, and regression tests:
 
 ```bash
-# Run complete test suite (103 tests):
+# Run complete test suite (111 tests):
 ./target_env/bin/python3 -m unittest discover tests/ -v
 
 # Run procedural holes, 3-tone voids, and zero-heatmap markings tests:

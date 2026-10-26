@@ -190,6 +190,22 @@ Orchestrates automated single-resolution cloud GPU training using Google Colab C
 
 Source: [`src/target_scorer/colab_runner.py`](file:///home/antho/target_scorer/src/target_scorer/colab_runner.py)
 
+### Optional Google Colab CLI Setup
+The `colab-train`, `colab-progressive-train`, and `colab-autolabel` commands interact with Google Colab via the standalone `colab` executable. If not already installed:
+
+```bash
+# Install via uv (recommended) or pip
+uv tool install google-colab-cli
+# Or: pip install google-colab-cli
+
+# Authenticate with your Google account
+colab auth
+
+# Verify compute unit quota
+colab usage
+```
+*(The Target Scorer orchestrator automatically resolves `colab` from `PATH` or `~/.local/bin/colab`.)*
+
 ### CLI Synopsis
 ```bash
 target-scorer colab-train [OPTIONS]
