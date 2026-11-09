@@ -432,6 +432,7 @@ The interface implements the Fluent Design-inspired Sun Valley theme via [`sv_tt
 * **Dynamic Dark/Light Mode Toggling:** Supports instant theme switching at runtime via `Ctrl+T` or `F10` hotkeys, with automatic dynamic styling adaptation for nested widgets and custom canvas elements.
 * **Modern Switch & Accent Styling:** Uses styled `Switch.TCheckbutton` toggles for overlay activation and `Accent.TButton` widgets for primary user callouts (e.g. Save).
 * **High-DPI Display Support:** Dynamically queries screen DPI (`tk.call('tk', 'scaling')`) and applies proportional font scaling to maintain legibility on 4K/high-density monitors.
+* **Native Windows Integration:** Optimized for Windows 10/11 appearance and DPI scaling. For step-by-step Windows setup, Microsoft Store Python 3.11, and launch instructions, see the [Windows Installation & Quickstart Guide](file:///home/antho/target_scorer/docs/windows_installation_and_quickstart_guide.md).
 
 ### B. Coordinate Space Transformations
 The GUI manages three distinct coordinate systems:
@@ -604,5 +605,15 @@ To reclaim disk space and ensure no orphaned blobs linger in local storage:
 git reflog expire --expire=now --all
 git gc --prune=now --aggressive
 ```
+
+---
+
+## Related Documentation & User Guides
+
+* 🪟 **[Windows Installation & Quickstart Guide](file:///home/antho/target_scorer/docs/windows_installation_and_quickstart_guide.md):** Step-by-step setup for Windows beginners (Microsoft Store Python 3.11, `uv`, CUDA, PowerShell script execution).
+* 📖 **[CLI & Python API Reference](file:///home/antho/target_scorer/docs/cli_and_api_reference.md):** Detailed synopsis and parameter documentation for all CLI commands.
+* 🔍 **[Interactive Annotation Editor Guide](file:///home/antho/target_scorer/docs/interactive_annotation_editor_guide.md):** Complete guide to the desktop annotation GUI and Eagle Eye Scoring Gauge.
+* 🎯 **[End-to-End Workflow Tutorial](file:///home/antho/target_scorer/docs/end_to_end_training_and_workflow_tutorial.md):** Real-world shooting range workflow from target capture to active learning and hybrid training.
+* 🏛️ **[Target Scoring System Context Document](file:///home/antho/target_scorer/docs/target_scoring_system_context_document.md):** High-level roadmap, design rationale, and historical sprint milestones.
 
 

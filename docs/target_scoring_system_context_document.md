@@ -322,6 +322,9 @@ canonical_crop = result.canonical_crop
 
 ### H. Python Environment Setup via `uv` (PyTorch & Platform Compatibility)
 
+> [!NOTE]
+> For complete step-by-step instructions for Windows beginners (installing CPython 3.11 from the Microsoft Store, installing `uv` via PowerShell, 1-click global CLI installation, and troubleshooting), refer to the dedicated [Windows Installation & Quickstart Guide](file:///home/antho/target_scorer/docs/windows_installation_and_quickstart_guide.md).
+
 #### Why `uv` is Required
 1. **PyTorch Wheel Compatibility Lag:** Official PyTorch pre-compiled binaries and CUDA distributions (e.g., `cu121`, `cu124`) lag behind modern bleeding-edge Python releases (Python 3.13, 3.14+).
 2. **PEP 668 ("Externally Managed Environments"):** Modern Linux operating systems intentionally disallow direct `pip install` against system Python packages.
@@ -333,10 +336,12 @@ canonical_crop = result.canonical_crop
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source ~/.bashrc
 
+# (On Windows PowerShell: powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex")
+
 # 2. Create isolated Python 3.11 environment
 uv python install 3.11
 uv venv target_env --python 3.11
-source target_env/bin/activate  # On Windows: target_env\Scripts\activate
+source target_env/bin/activate  # On Windows: .\target_env\Scripts\Activate.ps1
 
 # 3. Install PyTorch with Hardware Acceleration (CUDA 12.1)
 uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121

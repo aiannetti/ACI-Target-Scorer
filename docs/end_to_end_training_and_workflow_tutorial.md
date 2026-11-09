@@ -333,3 +333,12 @@ def score_live_target(frame_bgr):
         "mean_radius_mm": metrics.mean_radius_mm,
     }
 ```
+
+---
+
+## 10. Platform Guides & Next Steps
+
+* 🪟 **[Windows Installation & Beginner Quickstart Guide](file:///home/antho/target_scorer/docs/windows_installation_and_quickstart_guide.md):** Complete walkthrough for Windows 10/11 users (Microsoft Store Python 3.11, `uv`, CUDA acceleration, and GUI launch).
+* 🔍 **[Interactive Annotation Editor Guide](file:///home/antho/target_scorer/docs/interactive_annotation_editor_guide.md):** Detailed guide to keyboard shortcuts, pan/zoom, and Eagle Eye scoring loupe inspection.
+* 📖 **[CLI & Python API Reference](file:///home/antho/target_scorer/docs/cli_and_api_reference.md):** Comprehensive reference for all command-line arguments and Python data classes.
+* 🏗️ **[Technical Architecture & Developer Guide](file:///home/antho/target_scorer/docs/architecture_and_developer_guide.md):** Deep dive into the mathematical formulations, loss functions, and metrology rules.

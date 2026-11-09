@@ -17,6 +17,7 @@ For deep dives into workflows, algorithms, metrology grounding, and APIs, consul
 * 🔍 **[Interactive Annotation Editor & Eagle Eye Guide](file:///home/antho/target_scorer/docs/interactive_annotation_editor_guide.md):** Comprehensive walkthrough of the desktop GUI annotation editor: pan & zoom controls, ring overlays, the optical Eagle Eye Scoring Gauge, NRA Rule 14.3 inward breaks, caliber selection, and keyboard shortcuts.
 * 🎯 **[End-to-End Training & Workflow Tutorial](file:///home/antho/target_scorer/docs/end_to_end_training_and_workflow_tutorial.md):** Step-by-step operational guide from raw range smartphone photos to assisted auto-labeling, active learning verification, hybrid model training (Option A & B), and competitor PII privacy protection.
 * 🏗️ **[Technical Architecture & Developer Guide](file:///home/antho/target_scorer/docs/architecture_and_developer_guide.md):** System data flow diagrams (Mermaid / ASCII), physical metrology grounding, Harmonic 256-Grid Progressive Resizing, U-Net heatmap regression, Adaptive Wing Loss formulation, Fitzgibbon conic homography unwarping, 2D Taylor-series sub-pixel peak extraction, and `TargetAnnotation` schema.
+* 🪟 **[Windows Installation & Quickstart Guide](file:///home/antho/target_scorer/docs/windows_installation_and_quickstart_guide.md):** Complete beginner guide for Windows 10/11 users: Microsoft Store Python 3.11, fast package management via `uv`, 1-click global CLI installation (`uv tool`), NVIDIA CUDA setup, PowerShell execution policy configuration, and troubleshooting.
 * 🏛️ **[Target Scoring System Context Document](file:///home/antho/target_scorer/docs/target_scoring_system_context_document.md):** High-level system context, project mission, historical development milestones, Sprint roadmaps (Sprints 1–11), and domain metrology specifications.
 
 ---
@@ -135,6 +136,7 @@ target_scorer/
 │   ├── interactive_annotation_editor_guide.md # Desktop GUI & Eagle Eye loupe guide
 │   ├── end_to_end_training_and_workflow_tutorial.md # Active learning & operational tutorial
 │   ├── architecture_and_developer_guide.md    # Technical architecture & math specs
+│   ├── windows_installation_and_quickstart_guide.md # Windows 10/11 novice installation & quickstart
 │   └── target_scoring_system_context_document.md # High-level system context & sprint roadmap
 ├── src/
 │   └── target_scorer/
@@ -210,8 +212,29 @@ target_scorer/
 
 ## Python Environment Setup via `uv`
 
-To avoid dependency conflicts and ensure binary compatibility with CUDA, we recommend [`uv`](https://github.com/astral-sh/uv) to pin an isolated Python 3.11 virtual environment.
+To avoid dependency conflicts and ensure binary compatibility with CUDA, we recommend [`uv`](https://github.com/astral-sh/uv) to manage an isolated Python 3.11 virtual environment.
 
+> [!TIP]
+> **Windows Users:** For a comprehensive, beginner-friendly walkthrough covering Microsoft Store Python 3.11, PowerShell execution policies, CUDA verification, and GUI launching, consult the dedicated [Windows Installation & Beginner Quickstart Guide](file:///home/antho/target_scorer/docs/windows_installation_and_quickstart_guide.md).
+
+### Option 1: Zero-Setup 1-Click Global App Install (Windows / Linux / macOS)
+If you simply want to score targets, unwarp photographs, and use the desktop GUI without managing repositories or virtual environments:
+```bash
+# On Windows PowerShell:
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# (Or on Linux / macOS):
+# curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install target-scorer into an isolated application sandbox:
+uv tool install "git+https://github.com/aiannetti/ACI-Target-Scorer.git"
+
+# Verify CLI or launch the GUI directly:
+target-scorer --help
+target-scorer annotate
+```
+
+### Option 2: Linux / macOS Development Setup
 ```bash
 # 1. Install uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -240,6 +263,35 @@ pip install google-colab-cli
 # Authenticate with your Google account and verify compute balance
 colab auth
 colab usage
+```
+
+### Option 3: Windows 10/11 Development Setup (PowerShell)
+```powershell
+# 1. Install CPython 3.11 from Microsoft Store (or via winget):
+winget install Python.Python.3.11
+
+# 2. Install uv package manager:
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+uv tool update-shell
+
+# 3. Clone repository and create Python 3.11 virtual environment:
+cd ~\Documents
+git clone https://github.com/aiannetti/ACI-Target-Scorer.git
+cd ACI-Target-Scorer
+uv venv target_env --python 3.11
+
+# 4. Enable script execution and activate environment in PowerShell:
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+.\target_env\Scripts\Activate.ps1
+
+# 5. (Optional) Install NVIDIA CUDA 12.1 GPU PyTorch wheels:
+uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+
+# 6. Install Target Scorer in editable mode:
+uv pip install -e .
+
+# 7. Verify CUDA acceleration:
+python -c "import torch; print('CUDA Available:', torch.cuda.is_available(), '| Device:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
 ```
 
 ---
@@ -275,10 +327,10 @@ To preserve competitor privacy and protect sensitive physical range target photo
 
 ## Automated Test Suite
 
-Run the full battery of 111 unit, progressive, metrology, and regression tests:
+Run the full battery of 113 unit, progressive, metrology, and regression tests:
 
 ```bash
-# Run complete test suite (111 tests):
+# Run complete test suite (113 tests):
 ./target_env/bin/python3 -m unittest discover tests/ -v
 
 # Run procedural holes, 3-tone voids, and zero-heatmap markings tests:
