@@ -744,6 +744,41 @@ class TestAnnotationEditor(unittest.TestCase):
         finally:
             app.destroy()
 
+    def test_non_windows_ui_font_resolution(self):
+        """Verifies Windows uses Segoe UI while non-Windows resolves to an installed sans-serif UI font."""
+        import sys
+        import tkinter.font as tkfont
+        from target_scorer.gui.annotation_editor import resolve_ui_font_family
+
+        app = AnnotationEditor(target_dir_or_file=self.tmp_dir)
+        try:
+            self.assertEqual(resolve_ui_font_family(app, platform_name="win32"), "Segoe UI")
+
+            linux_font = resolve_ui_font_family(app, platform_name="linux")
+            self.assertNotEqual(linux_font, "Segoe UI")
+            self.assertNotEqual(linux_font.lower(), "fixed")
+
+            darwin_font = resolve_ui_font_family(app, platform_name="darwin")
+            self.assertNotEqual(darwin_font, "Segoe UI")
+            self.assertNotEqual(darwin_font.lower(), "fixed")
+
+            if not sys.platform.startswith("win"):
+                self.assertEqual(app.ui_font_family, resolve_ui_font_family(app))
+                for fname in ("TkDefaultFont", "SunValleyBodyFont"):
+                    if fname in tkfont.names():
+                        actual_fam = tkfont.nametofont(fname).actual().get("family", "").lower()
+                        self.assertNotEqual(actual_fam, "fixed")
+
+            # Verify theme toggle preserves the resolved non-Windows font on named fonts
+            app.toggle_theme()
+            if not sys.platform.startswith("win") and "SunValleyBodyFont" in tkfont.names():
+                self.assertNotEqual(
+                    tkfont.nametofont("SunValleyBodyFont").actual().get("family", "").lower(),
+                    "fixed",
+                )
+        finally:
+            app.destroy()
+
 
 if __name__ == "__main__":
     unittest.main()

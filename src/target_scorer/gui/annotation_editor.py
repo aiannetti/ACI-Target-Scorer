@@ -20,7 +20,7 @@ import numpy as np
 from PIL import Image, ImageTk
 
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, font as tkfont, messagebox, ttk
 
 from target_scorer.config import TargetRingsConfig
 from target_scorer.data.autolabel import render_review_card
@@ -33,6 +33,109 @@ from target_scorer.metrology.scoring import GroupMetrics, ShotResult, score_targ
 IMAGE_EXTENSIONS: Set[str] = {
     ".heic", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".dng", ".webp", ".bmp"
 }
+
+WINDOWS_UI_FONT = "Segoe UI"
+_DARWIN_UI_FONT_CANDIDATES: Tuple[str, ...] = (
+    "SF Pro Text",
+    "Helvetica Neue",
+    "Helvetica",
+    "Arial",
+    "Liberation Sans",
+    "DejaVu Sans",
+    "Nimbus Sans L",
+)
+_UNIX_UI_FONT_CANDIDATES: Tuple[str, ...] = (
+    "Selawik",
+    "Carlito",
+    "Inter",
+    "Noto Sans",
+    "Ubuntu",
+    "Cantarell",
+    "Liberation Sans",
+    "DejaVu Sans",
+    "Arial",
+    "Nimbus Sans L",
+    "Helvetica",
+)
+_MANAGED_TK_NAMED_FONTS: Tuple[str, ...] = (
+    "TkDefaultFont",
+    "TkTextFont",
+    "TkHeadingFont",
+    "TkMenuFont",
+    "TkTooltipFont",
+    "TkCaptionFont",
+    "TkSmallCaptionFont",
+    "TkIconFont",
+    "SunValleyCaptionFont",
+    "SunValleyBodyFont",
+    "SunValleyBodyStrongFont",
+    "SunValleyBodyLargeFont",
+    "SunValleySubtitleFont",
+    "SunValleyTitleFont",
+    "SunValleyTitleLargeFont",
+    "SunValleyDisplayFont",
+)
+
+
+def resolve_ui_font_family(
+    root: Optional[tk.Misc] = None,
+    platform_name: Optional[str] = None,
+) -> str:
+    """
+    Returns 'Segoe UI' on Windows, or selects the closest installed sans-serif
+    font resembling Windows Segoe UI on non-Windows operating systems.
+    """
+    plat = (platform_name or sys.platform).lower()
+    if plat.startswith("win"):
+        return WINDOWS_UI_FONT
+
+    candidates = _DARWIN_UI_FONT_CANDIDATES if plat == "darwin" else _UNIX_UI_FONT_CANDIDATES
+    if root is None:
+        return "Helvetica Neue" if plat == "darwin" else "Liberation Sans"
+
+    try:
+        available_lower = {f.lower(): f for f in tkfont.families(root)}
+    except tk.TclError:
+        available_lower = {}
+
+    # Pass 1: Prefer an explicitly installed TrueType/humanist candidate that does not map to bitmap 'fixed'.
+    for cand in candidates:
+        canonical = available_lower.get(cand.lower())
+        if canonical:
+            try:
+                actual_fam = tkfont.Font(root=root, family=canonical, size=10).actual().get("family", "")
+                if actual_fam.lower() not in ("", "fixed"):
+                    return canonical
+            except tk.TclError:
+                return canonical
+
+    # Pass 2: Fall back to X11/system font aliases (e.g. 'Arial' -> 'nimbus sans l') if Xft is absent.
+    for cand in candidates:
+        try:
+            actual_fam = tkfont.Font(root=root, family=cand, size=10).actual().get("family", "")
+            if actual_fam.lower() not in ("", "fixed", "courier", "times"):
+                return actual_fam
+        except tk.TclError:
+            continue
+
+    try:
+        default_fam = tkfont.nametofont("TkDefaultFont").actual().get("family", "")
+        if default_fam and default_fam.lower() != "fixed":
+            return default_fam
+    except tk.TclError:
+        pass
+    return "Helvetica"
+
+
+def apply_ui_font_to_named_fonts(family: str) -> None:
+    """Updates Tk and Sun Valley named fonts to use the resolved UI font family."""
+    existing = set(tkfont.names())
+    for name in _MANAGED_TK_NAMED_FONTS:
+        if name in existing:
+            try:
+                tkfont.nametofont(name).configure(family=family)
+            except tk.TclError:
+                pass
 
 
 @dataclass
@@ -202,13 +305,13 @@ class EagleEyeLoupe(tk.Toplevel):
         metrology_card = ttk.Frame(self, style="Card.TFrame", padding=(12, 8))
         metrology_card.pack(side=tk.TOP, fill=tk.X, padx=12, pady=(0, 6))
 
-        self.lbl_score = ttk.Label(metrology_card, text="SCORE: --", font=("Segoe UI", 13, "bold"), foreground="#00ff78")
+        self.lbl_score = ttk.Label(metrology_card, text="SCORE: --", font=self.parent_editor._font(13, "bold"), foreground="#00ff78")
         self.lbl_score.pack(anchor=tk.W)
 
-        self.lbl_ruling = ttk.Label(metrology_card, text="--", font=("Segoe UI", 9, "bold"), foreground="#00d7ff")
+        self.lbl_ruling = ttk.Label(metrology_card, text="--", font=self.parent_editor._font(9, "bold"), foreground="#00d7ff")
         self.lbl_ruling.pack(anchor=tk.W, pady=(2, 2))
 
-        self.lbl_details = ttk.Label(metrology_card, text="--", font=("Segoe UI", 8), foreground="#a0a4b0")
+        self.lbl_details = ttk.Label(metrology_card, text="--", font=self.parent_editor._font(8), foreground="#a0a4b0")
         self.lbl_details.pack(anchor=tk.W)
 
         # 4. Controls Frame
@@ -239,7 +342,7 @@ class EagleEyeLoupe(tk.Toplevel):
         btn_up.grid(row=0, column=1, padx=2, pady=2)
         btn_left = ttk.Button(pad_frame, text="◀", width=4, command=lambda: self.nudge(-self.nudge_step, 0))
         btn_left.grid(row=1, column=0, padx=2, pady=2)
-        btn_center = ttk.Label(pad_frame, text="✛", font=("Segoe UI", 11, "bold"), foreground="#ffd700", anchor="center")
+        btn_center = ttk.Label(pad_frame, text="✛", font=self.parent_editor._font(11, "bold"), foreground="#ffd700", anchor="center")
         btn_center.grid(row=1, column=1, padx=2, pady=2)
         btn_right = ttk.Button(pad_frame, text="▶", width=4, command=lambda: self.nudge(self.nudge_step, 0))
         btn_right.grid(row=1, column=2, padx=2, pady=2)
@@ -363,7 +466,9 @@ class EagleEyeLoupe(tk.Toplevel):
                     lx = bx_loupe + ux * r_ring_px
                     ly = by_loupe + uy * r_ring_px
                     if 15 <= lx <= self.canvas_dim - 45 and 15 <= ly <= self.canvas_dim - 15:
-                        self.canvas.create_text(lx + 6, ly - 6, text=f"{label}-Ring", fill=color, font=("Segoe UI", 8, "bold"), anchor=tk.W)
+                        self.canvas.create_text(
+                            lx + 6, ly - 6, text=f"{label}-Ring", fill=color, font=self.parent_editor._font(8, "bold"), anchor=tk.W
+                        )
 
         # 3. Render Caliber Flange Gauge Reticle
         rad_gauge_px = (cal_mm / 2.0) * px_per_mm * mag
@@ -522,6 +627,9 @@ class AnnotationEditor(tk.Tk):
         self.geometry("1420x920")
         self.minsize(1050, 700)
 
+        # Resolve platform-appropriate UI font family ('Segoe UI' on Windows; closest sans-serif on macOS/Linux)
+        self.ui_font_family: str = resolve_ui_font_family(self)
+
         # Apply theme styling (Sun Valley theme with fallback to classic dark)
         self.style = ttk.Style(self)
         self.current_theme = "dark"
@@ -532,6 +640,8 @@ class AnnotationEditor(tk.Tk):
             self.has_sv_ttk = True
         except Exception:
             self.has_sv_ttk = False
+
+        apply_ui_font_to_named_fonts(self.ui_font_family)
 
         if self.has_sv_ttk:
             self.configure(bg="#1c1c1c")
@@ -624,41 +734,47 @@ class AnnotationEditor(tk.Tk):
             if default_dir.exists():
                 self.load_path(default_dir)
 
+    def _font(self, size: int, *styles: str) -> Tuple[Any, ...]:
+        """Builds a Tk font tuple using the platform-resolved sans-serif UI family."""
+        return (self.ui_font_family, size, *styles)
+
     def _configure_sv_theme(self):
         """Configures typography, badge highlights, and button states for Sun Valley theme."""
+        apply_ui_font_to_named_fonts(self.ui_font_family)
         theme = self.current_theme
         header_fg = "#57c8ff" if theme == "dark" else "#005fb8"
         sub_fg = "#a0a4b0" if theme == "dark" else "#5c5c5c"
         danger_fg = "#ff6b6b" if theme == "dark" else "#c62828"
         success_fg = "#00ff78" if theme == "dark" else "#0b8043"
 
-        self.style.configure("Header.TLabel", font=("Segoe UI", 12, "bold"), foreground=header_fg)
-        self.style.configure("SubHeader.TLabel", font=("Segoe UI", 10, "bold"), foreground=sub_fg)
-        self.style.configure("Danger.TButton", font=("Segoe UI", 9, "bold"), foreground=danger_fg)
-        self.style.configure("Success.TButton", font=("Segoe UI", 9, "bold"), foreground=success_fg)
+        self.style.configure("Header.TLabel", font=self._font(12, "bold"), foreground=header_fg)
+        self.style.configure("SubHeader.TLabel", font=self._font(10, "bold"), foreground=sub_fg)
+        self.style.configure("Danger.TButton", font=self._font(9, "bold"), foreground=danger_fg)
+        self.style.configure("Success.TButton", font=self._font(9, "bold"), foreground=success_fg)
 
     def _configure_legacy_dark_theme(self):
         """Fallback theme configuration using clam for environments without sv-ttk."""
+        apply_ui_font_to_named_fonts(self.ui_font_family)
         dark_bg = "#1e1e24"
         card_bg = "#26272e"
         accent_color = "#00d7ff"
         text_fg = "#f0f2f5"
 
-        self.style.configure(".", background=dark_bg, foreground=text_fg, font=("Segoe UI", 9))
+        self.style.configure(".", background=dark_bg, foreground=text_fg, font=self._font(9))
         self.style.configure("TFrame", background=dark_bg)
         self.style.configure("Card.TFrame", background=card_bg, relief="flat")
         self.style.configure("TLabel", background=dark_bg, foreground=text_fg)
         self.style.configure("Card.TLabel", background=card_bg, foreground=text_fg)
-        self.style.configure("Header.TLabel", font=("Segoe UI", 12, "bold"), foreground=accent_color)
-        self.style.configure("SubHeader.TLabel", font=("Segoe UI", 10, "bold"), foreground="#a0a4b0")
+        self.style.configure("Header.TLabel", font=self._font(12, "bold"), foreground=accent_color)
+        self.style.configure("SubHeader.TLabel", font=self._font(10, "bold"), foreground="#a0a4b0")
 
         self.style.configure("TButton", background="#323440", foreground=text_fg, borderwidth=1, padding=(8, 4))
         self.style.map("TButton", background=[("active", "#3f4252"), ("pressed", "#252733")])
 
-        self.style.configure("Accent.TButton", background="#007acc", foreground="#ffffff", font=("Segoe UI", 9, "bold"))
+        self.style.configure("Accent.TButton", background="#007acc", foreground="#ffffff", font=self._font(9, "bold"))
         self.style.map("Accent.TButton", background=[("active", "#0098ff"), ("pressed", "#005a9e")])
 
-        self.style.configure("Success.TButton", background="#107c41", foreground="#ffffff", font=("Segoe UI", 9, "bold"))
+        self.style.configure("Success.TButton", background="#107c41", foreground="#ffffff", font=self._font(9, "bold"))
         self.style.map("Success.TButton", background=[("active", "#159c52"), ("pressed", "#0b582e")])
 
         self.style.configure("Danger.TButton", background="#a82020", foreground="#ffffff")
@@ -699,7 +815,7 @@ class AnnotationEditor(tk.Tk):
 
         self.style.configure("Treeview", background="#22232a", foreground=text_fg, fieldbackground="#22232a", rowheight=24)
         self.style.map("Treeview", background=[("selected", "#005a9e")], foreground=[("selected", "#ffffff")])
-        self.style.configure("Treeview.Heading", background="#2c2d36", foreground=text_fg, font=("Segoe UI", 9, "bold"))
+        self.style.configure("Treeview.Heading", background="#2c2d36", foreground=text_fg, font=self._font(9, "bold"))
 
     def toggle_theme(self):
         """Toggles between Sun Valley Dark and Light themes at runtime."""
@@ -714,6 +830,7 @@ class AnnotationEditor(tk.Tk):
     def _apply_theme_colors(self, theme: str):
         """Applies theme-specific colors across root window, labels, buttons, and sub-dialogs."""
         self.current_theme = theme
+        apply_ui_font_to_named_fonts(self.ui_font_family)
         if self.has_sv_ttk:
             bg_color = "#1c1c1c" if theme == "dark" else "#fafafa"
             header_fg = "#57c8ff" if theme == "dark" else "#005fb8"
@@ -770,7 +887,7 @@ class AnnotationEditor(tk.Tk):
         btn_prev = ttk.Button(top_bar, text="◀ Prev (P)", command=self.on_prev_target)
         btn_prev.pack(side=tk.LEFT, padx=2)
 
-        self.lbl_target_info = ttk.Label(top_bar, text="No targets loaded", font=("Segoe UI", 10, "bold"), width=34)
+        self.lbl_target_info = ttk.Label(top_bar, text="No targets loaded", font=self._font(10, "bold"), width=34)
         self.lbl_target_info.pack(side=tk.LEFT, padx=6)
 
         btn_next = ttk.Button(top_bar, text="Next (N) ▶", command=self.on_next_target)
@@ -877,7 +994,7 @@ class AnnotationEditor(tk.Tk):
         )
         self.btn_autolabel_settings.pack(side=tk.LEFT, padx=3)
 
-        self.lbl_batch_progress = ttk.Label(autolabel_bar, text="", foreground="#57c8ff", font=("Segoe UI", 9, "bold"))
+        self.lbl_batch_progress = ttk.Label(autolabel_bar, text="", foreground="#57c8ff", font=self._font(9, "bold"))
         self.lbl_batch_progress.pack(side=tk.LEFT, padx=10)
 
         # 1b. Export / Copy on Save Bar
@@ -912,7 +1029,7 @@ class AnnotationEditor(tk.Tk):
             export_bar,
             text="(copies .json, canonical image, raw photo, and review card)",
             foreground=hint_fg,
-            font=("Segoe UI", 8)
+            font=self._font(8)
         )
         self.lbl_hint.pack(side=tk.LEFT)
 
@@ -937,7 +1054,7 @@ class AnnotationEditor(tk.Tk):
         btn_zout = ttk.Button(canvas_tools, text="Zoom -", command=lambda: self.change_zoom(0.80), width=8)
         btn_zout.pack(side=tk.LEFT, padx=2)
 
-        self.lbl_zoom = ttk.Label(canvas_tools, text="100%", font=("Segoe UI", 9, "bold"), width=7)
+        self.lbl_zoom = ttk.Label(canvas_tools, text="100%", font=self._font(9, "bold"), width=7)
         self.lbl_zoom.pack(side=tk.LEFT, padx=6)
 
         cb_rings = ttk.Checkbutton(canvas_tools, text="NRA Ring Guides", variable=self.show_rings_var, command=self.redraw_canvas, style=cb_style)
@@ -979,21 +1096,21 @@ class AnnotationEditor(tk.Tk):
         spec_card.pack(side=tk.TOP, fill=tk.X, pady=(0, 10))
 
         ttk.Label(spec_card, text="NRA TARGET SPECIFICATION", style="Header.TLabel").pack(anchor=tk.W)
-        self.lbl_target_type = ttk.Label(spec_card, text="Target: NRA B-3 (50ft Timed & Rapid)", font=("Segoe UI", 10))
+        self.lbl_target_type = ttk.Label(spec_card, text="Target: NRA B-3 (50ft Timed & Rapid)", font=self._font(10))
         self.lbl_target_type.pack(anchor=tk.W, pady=(4, 2))
         self.lbl_scale_info = ttk.Label(spec_card, text="Scale: 4.00 px/mm | Canvas: 1024x1024", foreground="#a0a4b0")
         self.lbl_scale_info.pack(anchor=tk.W)
-        self.lbl_entry_status = ttk.Label(spec_card, text="Status: Ready", font=("Segoe UI", 9, "bold"), foreground="#a0a4b0")
+        self.lbl_entry_status = ttk.Label(spec_card, text="Status: Ready", font=self._font(9, "bold"), foreground="#a0a4b0")
         self.lbl_entry_status.pack(anchor=tk.W, pady=(4, 0))
 
         # Scorecard Summary Card
         score_card = ttk.Frame(hud_frame, style="Card.TFrame", padding=12)
         score_card.pack(side=tk.TOP, fill=tk.X, pady=(0, 10))
 
-        self.lbl_total_score = ttk.Label(score_card, text="SCORE: 0 / 100", font=("Segoe UI", 16, "bold"), foreground="#00ff78")
+        self.lbl_total_score = ttk.Label(score_card, text="SCORE: 0 / 100", font=self._font(16, "bold"), foreground="#00ff78")
         self.lbl_total_score.pack(anchor=tk.W)
 
-        self.lbl_group_stats = ttk.Label(score_card, text="Shots: 0 | X-Count: 0", font=("Segoe UI", 10, "bold"))
+        self.lbl_group_stats = ttk.Label(score_card, text="Shots: 0 | X-Count: 0", font=self._font(10, "bold"))
         self.lbl_group_stats.pack(anchor=tk.W, pady=(4, 2))
 
         self.lbl_extreme_spread = ttk.Label(score_card, text="Extreme Spread: 0.00 mm (0.00 MOA)", foreground="#ff9100")
@@ -1071,7 +1188,7 @@ class AnnotationEditor(tk.Tk):
         )
         self.lbl_status_msg.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
 
-        self.lbl_save_status = ttk.Label(status_bar, text="", font=("Segoe UI", 9, "bold"), foreground="#00ff78")
+        self.lbl_save_status = ttk.Label(status_bar, text="", font=self._font(9, "bold"), foreground="#00ff78")
         self.lbl_save_status.pack(side=tk.RIGHT)
 
     def _shortcut_safe(self, fn):
@@ -2001,14 +2118,14 @@ class AnnotationEditor(tk.Tk):
                 26, 28,
                 text="UNLABELED RAW TARGET",
                 fill="#ffb300",
-                font=("Segoe UI", 10, "bold"),
+                font=self._font(10, "bold"),
                 anchor=tk.W,
             )
             self.canvas.create_text(
                 26, 48,
                 text="Verify Target Type, then click Auto-Label (A) or Rectify",
                 fill="#cbd5e1",
-                font=("Segoe UI", 8),
+                font=self._font(8),
                 anchor=tk.W,
             )
             return
@@ -2030,7 +2147,7 @@ class AnnotationEditor(tk.Tk):
         self.canvas.create_line(bx_scr - 14, by_scr, bx_scr + 14, by_scr, fill="#ffd700", width=2)
         self.canvas.create_line(bx_scr, by_scr - 14, bx_scr, by_scr + 14, fill="#ffd700", width=2)
         self.canvas.create_oval(bx_scr - 5, by_scr - 5, bx_scr + 5, by_scr + 5, outline="#ffd700", width=1)
-        self.canvas.create_text(bx_scr + 16, by_scr - 10, text="Bullseye", fill="#ffd700", font=("Segoe UI", 9, "bold"), anchor=tk.W)
+        self.canvas.create_text(bx_scr + 16, by_scr - 10, text="Bullseye", fill="#ffd700", font=self._font(9, "bold"), anchor=tk.W)
 
         # 4. Draw Extreme Spread Line (if >= 2 shots)
         if self.show_spread_var.get() and self.group_metrics and self.group_metrics.total_shots >= 2 and self.group_metrics.extreme_spread_mm > 0:
@@ -2089,7 +2206,7 @@ class AnnotationEditor(tk.Tk):
                 bx = sx + rad_scr + 3
                 by = sy - 4
                 self.canvas.create_rectangle(bx - 2, by - 8, bx + 36, by + 6, fill="#1c1d22", outline=gauge_color, width=1)
-                self.canvas.create_text(bx + 1, by - 1, text=tag_text, fill="#ffffff", font=("Segoe UI", 8, "bold"), anchor=tk.W)
+                self.canvas.create_text(bx + 1, by - 1, text=tag_text, fill="#ffffff", font=self._font(8, "bold"), anchor=tk.W)
 
     # =========================================================================
     # Real-Time Metrology Scoring
