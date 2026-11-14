@@ -55,6 +55,8 @@ class TestCLIDispatcher(unittest.TestCase):
                 output = fake_out.getvalue()
                 self.assertIn("--copy-to-dir", output)
                 self.assertIn("--target", output)
+                self.assertIn("--checkpoint", output)
+                self.assertIn("--threshold", output)
 
     def test_colab_train_missing_cli_handled_gracefully(self):
         """Verifies colab-train gracefully handles missing colab executable."""

@@ -1,6 +1,6 @@
 # Target Scorer: Camera-Independent NRA Target Metrology & Scoring Engine
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 [![OpenCV](https://img.shields.io/badge/OpenCV-4.8+-green.svg)](https://opencv.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -19,6 +19,8 @@ For deep dives into workflows, algorithms, metrology grounding, and APIs, consul
 * 🏗️ **[Technical Architecture & Developer Guide](file:///home/antho/target_scorer/docs/architecture_and_developer_guide.md):** System data flow diagrams (Mermaid / ASCII), physical metrology grounding, Harmonic 256-Grid Progressive Resizing, U-Net heatmap regression, Adaptive Wing Loss formulation, Fitzgibbon conic homography unwarping, 2D Taylor-series sub-pixel peak extraction, and `TargetAnnotation` schema.
 * 🪟 **[Windows Installation & Quickstart Guide](file:///home/antho/target_scorer/docs/windows_installation_and_quickstart_guide.md):** Complete beginner guide for Windows 10/11 users: Microsoft Store Python 3.11, fast package management via `uv`, 1-click global CLI installation (`uv tool`), NVIDIA CUDA setup, PowerShell execution policy configuration, and troubleshooting.
 * 🏛️ **[Target Scoring System Context Document](file:///home/antho/target_scorer/docs/target_scoring_system_context_document.md):** High-level system context, project mission, historical development milestones, Sprint roadmaps (Sprints 1–11), and domain metrology specifications.
+* 🧪 **[Verification & Testing Plan](file:///home/antho/target_scorer/docs/target_scoring_testing_plan.md):** Complete breakdown of all 10 unit/regression test modules (123 tests), metrology verification matrices, and benchmark criteria.
+* 🖼️ **[Image Format & ML Ingestion Guide](file:///home/antho/target_scorer/docs/image_format_landscape_and_ml_ingestion_guide.md):** Reference for HEIC, ProRAW DNG, Android Ultra HDR, EXIF orientation, Display P3 CMS, and Raspberry Pi `Picamera2` memory buffers.
 
 ---
 
@@ -137,35 +139,46 @@ The progression enforces uniform step properties: **$+256\text{ px}$ dimension**
 ```
 target_scorer/
 ├── docs/
-│   ├── cli_and_api_reference.md               # Complete CLI & Python API reference
-│   ├── interactive_annotation_editor_guide.md # Desktop GUI & Eagle Eye loupe guide
+│   ├── Camera_Independence_Plan.md               # Classical rectification & homography design plan
+│   ├── architecture_and_developer_guide.md       # Technical architecture & math specs
+│   ├── cli_and_api_reference.md                  # Complete CLI & Python API reference
 │   ├── end_to_end_training_and_workflow_tutorial.md # Active learning & operational tutorial
-│   ├── architecture_and_developer_guide.md    # Technical architecture & math specs
+│   ├── image_format_landscape_and_ml_ingestion_guide.md # Cross-platform image formats & ingestion
+│   ├── interactive_annotation_editor_guide.md    # Desktop GUI & Eagle Eye loupe guide
+│   ├── target_scoring_system_context_document.md # High-level system context & sprint roadmap
+│   ├── target_scoring_testing_plan.md            # Verification matrices & 123-test suite breakdown
 │   ├── windows_installation_and_quickstart_guide.md # Windows 10/11 novice installation & quickstart
-│   └── target_scoring_system_context_document.md # High-level system context & sprint roadmap
+│   └── benchmarks/
+│       ├── visual_benchmark_inspection_report.md # Graphical benchmark verification report
+│       └── assets/                               # Generated benchmark diagnostic PNG panels
 ├── src/
 │   └── target_scorer/
-│       ├── __init__.py           # Lazy loaders for clean imports
-│       ├── cli.py                # Unified CLI (infer, train, colab-train, colab-progressive-train, etc.)
-│       ├── config.py             # TargetConfig, TrainConfig, TargetRingsConfig
+│       ├── __init__.py           # Lazy loaders & public package exports
+│       ├── cli.py                # Unified CLI (infer, train, colab-train, colab-progressive-train, colab-autolabel, rectify, autolabel, annotate)
+│       ├── config.py             # TargetConfig, TrainConfig, TargetRingsConfig, ShotAnnotation
 │       ├── infer.py              # End-to-end inference & metrology pipeline
 │       ├── train.py              # Single-resolution and Progressive Resizing training pipeline
-│       ├── colab_runner.py       # Cloud orchestrator for Colab CLI (single-res & progressive)
+│       ├── colab_runner.py       # Cloud orchestrator for Colab CLI (single-res, progressive, autolabel)
 │       ├── data/
+│       │   ├── __init__.py       # Exports schema, datasets, AutoLabelPipeline, autolabel_target_image
 │       │   ├── schema.py         # TargetAnnotation & AnnotatedShot schema & JSON I/O
 │       │   ├── real_dataset.py   # PyTorch dataset for real target photographs & augmentations
 │       │   ├── hybrid_dataset.py # Blended sampler (Option A hybrid & Option B pure real)
-│       │   └── autolabel.py      # Active learning model-assisted auto-labeler & review cards
+│       │   └── autolabel.py      # AutoLabelPipeline, resolve_checkpoint_path, & review cards
 │       ├── geometry/
+│       │   ├── __init__.py
 │       │   ├── canonical_loader.py # Format-agnostic loader (HEIC, RAW, buffers, EXIF, sRGB)
 │       │   └── rectifier.py      # Classical perspective normalizer & ellipse fitting
 │       ├── gui/
-│       │   └── annotation_editor.py # Interactive GUI & Eagle Eye optical scoring loupe
+│       │   ├── __init__.py
+│       │   └── annotation_editor.py # Interactive GUI, AutoLabelSettingsDialog, & Eagle Eye loupe
 │       ├── metrology/
+│       │   ├── __init__.py
 │       │   ├── peaks.py          # 2D Taylor-series sub-pixel peak extraction & defense-in-depth filtering
 │       │   ├── scoring.py        # NRA B-2 / B-3 inward scoring & dispersion math
 │       │   └── visualization.py  # Diagnostic scorecard overlay & HUD generator
 │       ├── models/
+│       │   ├── __init__.py
 │       │   ├── unet.py           # Fully convolutional HighResHeatmapUNet architecture
 │       │   └── loss.py           # Adaptive Wing Loss implementation
 │       └── synthetic/
@@ -176,40 +189,51 @@ target_scorer/
 │           ├── generator.py      # Facade orchestrator for synthetic target generation
 │           └── dataset.py        # Procedural PyTorch dataset with compression jitter
 ├── datasets/
-│   └── calibration_targets/      # Sample calibration targets with raw photos & ground truth JSON
+│   └── calibration_targets/      # Sample calibration targets with raw photos, canonical crops & ground truth JSON
 ├── private/                      # Private Git Submodule (aci-target-scorer-private-data)
 │   └── data/
 │       └── real_targets/         # Sensitive competition target photos, canonical crops & JSON
 ├── tests/
-│   ├── test_progressive_training.py # Dynamic spatial resizing & progressive curriculum test suite
-│   ├── test_synthetic_holes.py   # Procedural holes, 3-tone voids, 4-zone placement & zero-heatmap markings
-│   ├── test_real_dataset.py      # Real dataset, schema, hybrid, and autolabel test suite
-│   ├── test_canonical_loader.py  # Format-independent ingestion & in-memory buffer test suite
-│   ├── test_low_res_metrology.py # Scoring compliance & defense-in-depth metrology test suite
-│   ├── test_camera_angles.py     # Perspective rectification & tilt test suite
-│   ├── test_cli.py               # Unified CLI dispatcher & argument handling test suite
-│   └── test_benchmark_low_res.py # Procedural statistical regression benchmark
+│   ├── __init__.py
+│   ├── test_annotation_editor.py    # GUI editor, Eagle Eye loupe, in-editor autolabel, & font resolution (18 tests)
+│   ├── test_benchmark_low_res.py    # Procedural 100-target statistical regression benchmark (1 test)
+│   ├── test_camera_angles.py        # Perspective rectification & tilt stress tests (7 tests)
+│   ├── test_canonical_loader.py     # Format-independent ingestion & in-memory buffer tests (8 tests)
+│   ├── test_cli.py                  # Unified CLI dispatcher & argument handling tests (5 tests)
+│   ├── test_colab_runner.py         # Colab CLI orchestration, chunked upload, & bundle tests (16 tests)
+│   ├── test_low_res_metrology.py    # Scoring compliance & defense-in-depth metrology tests (33 tests)
+│   ├── test_progressive_training.py # Dynamic spatial resizing & progressive curriculum tests (6 tests)
+│   ├── test_real_dataset.py         # Real dataset, schema, hybrid, & AutoLabelPipeline tests (21 tests)
+│   └── test_synthetic_holes.py      # Procedural holes, 3-tone voids, & zero-heatmap markings tests (8 tests)
 ├── weights/
 │   ├── target_scoring_hrnet_1024_best.pt # Production competition model (0.335mm MRE)
 │   ├── target_scoring_hrnet_768_best.pt  # Intermediate Stage 3 weights
 │   ├── target_scoring_hrnet_512_best.pt  # Intermediate Stage 2 weights
-│   └── target_scoring_hrnet_256_best.pt  # Intermediate Stage 1 weights
+│   ├── target_scoring_hrnet_256_best.pt  # Intermediate Stage 1 weights
+│   └── target_scoring_hrnet_best.pt      # Baseline checkpoint
 ├── visual_inspection_reports/    # Diagnostic scorecards (PNG) across stages (B-2 Slow Fire & B-3 Timed/Rapid)
 │   ├── colab_scorecard_1024_b2.png
+│   ├── colab_scorecard_1024_b2_redacted.png
 │   ├── colab_scorecard_1024_b3.png
+│   ├── colab_scorecard_1024_b3_redacted.png
 │   ├── colab_scorecard_768_b2.png
 │   ├── colab_scorecard_768_b3.png
 │   ├── colab_scorecard_512_b2.png
 │   ├── colab_scorecard_512_b3.png
 │   ├── colab_scorecard_256_b2.png
-│   └── colab_scorecard_256_b3.png
+│   ├── colab_scorecard_256_b3.png
+│   ├── phase4_512_scorecard.png
+│   ├── phase5_512_scorecard.png
+│   └── phase5_512_scorecard_redacted.png
 ├── scripts/
-│   ├── train_progressive_colab.py # Standalone runner for 4-stage progressive cloud curriculum
-│   ├── create_colab_bundle.py    # Packages repository into clean cloud zip bundle
-│   └── generate_benchmark_visuals.py
+│   ├── train_progressive_colab.py     # Standalone runner for 4-stage progressive cloud curriculum
+│   ├── train_all_colab_resolutions.py # Multi-resolution Colab training script
+│   ├── create_colab_bundle.py         # Packages repository into clean cloud zip bundle
+│   ├── generate_benchmark_visuals.py  # Generates visual benchmark inspection panels
+│   └── generate_calibration_targets.py # Generates synthetic calibration targets dataset
 ├── notebooks/
 │   └── target_scorer_colab_training.ipynb # Google Colab interactive training notebook
-├── pyproject.toml                # Standard PEP 517 build configuration
+├── pyproject.toml                # Standard PEP 517 build configuration (requires-python >= 3.9)
 └── README.md
 ```
 
@@ -217,7 +241,12 @@ target_scorer/
 
 ## Python Environment Setup via `uv`
 
-To avoid dependency conflicts and ensure binary compatibility with CUDA, we recommend [`uv`](https://github.com/astral-sh/uv) to manage an isolated Python 3.11 virtual environment.
+`target-scorer` supports Python **3.9 – 3.12** (`requires-python = ">=3.9"` in [`pyproject.toml`](file:///home/antho/target_scorer/pyproject.toml)). To avoid dependency conflicts and ensure binary compatibility with CUDA, we recommend [`uv`](https://github.com/astral-sh/uv) with an isolated **Python 3.11** virtual environment.
+
+Optional extras defined in [`pyproject.toml`](file:///home/antho/target_scorer/pyproject.toml):
+* `.[colab]`: Installs `google-colab-cli` automatically on Python 3.12+ (on Python 3.11, install via `uv tool install google-colab-cli`).
+* `.[dev]`: Installs `pytest`, `ruff`, `coverage`, and `matplotlib`.
+* `.[all]`: Installs both `[colab]` and `[dev]` optional dependencies.
 
 > [!TIP]
 > **Windows Users:** For a comprehensive, beginner-friendly walkthrough covering Microsoft Store Python 3.11, PowerShell execution policies, CUDA verification, and GUI launching, consult the dedicated [Windows Installation & Beginner Quickstart Guide](file:///home/antho/target_scorer/docs/windows_installation_and_quickstart_guide.md).
@@ -253,7 +282,7 @@ source target_env/bin/activate
 # 3. Install PyTorch with CUDA 12.1 acceleration (or use cpu index)
 uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 
-# 4. Install Target Scorer in editable development mode
+# 4. Install Target Scorer in editable development mode (add ".[dev]" or ".[all]" for test/lint tools)
 uv pip install -e .
 
 # 5. Verify CUDA acceleration
@@ -332,32 +361,41 @@ To preserve competitor privacy and protect sensitive physical range target photo
 
 ## Automated Test Suite
 
-Run the full battery of 113 unit, progressive, metrology, and regression tests:
+Run the full battery of **123 unit, GUI, progressive, metrology, and regression tests** across all **10 test modules**:
 
 ```bash
-# Run complete test suite (113 tests):
-./target_env/bin/python3 -m unittest discover tests/ -v
+# Run complete test suite (123 tests across 10 modules):
+python -m unittest discover tests/ -v
 
-# Run procedural holes, 3-tone voids, and zero-heatmap markings tests:
-./target_env/bin/python3 -m unittest tests/test_synthetic_holes.py -v
+# Run Interactive Annotation Editor, in-editor auto-label, & cross-platform font tests (18 tests):
+python -m unittest tests/test_annotation_editor.py -v
 
-# Run Progressive Resizing dynamic resolution tests:
-./target_env/bin/python3 -m unittest tests/test_progressive_training.py -v
+# Run real dataset ingestion, schema, hybrid, & AutoLabelPipeline tests (21 tests):
+python -m unittest tests/test_real_dataset.py -v
 
-# Run real dataset ingestion, schema, and active learning tests:
-./target_env/bin/python3 -m unittest tests/test_real_dataset.py -v
+# Run metrology, inward scoring, and defense-in-depth filtering assertions (33 tests):
+python -m unittest tests/test_low_res_metrology.py -v
 
-# Run format-independent ingestion & in-memory buffer tests:
-./target_env/bin/python3 -m unittest tests/test_canonical_loader.py -v
+# Run Colab CLI orchestration, chunked upload, and bundle packaging tests (16 tests):
+python -m unittest tests/test_colab_runner.py -v
 
-# Run metrology, inward scoring, and defense-in-depth filtering assertions:
-./target_env/bin/python3 -m unittest tests/test_low_res_metrology.py -v
+# Run format-independent ingestion & in-memory buffer tests (8 tests):
+python -m unittest tests/test_canonical_loader.py -v
 
-# Run unified CLI dispatcher tests:
-./target_env/bin/python3 -m unittest tests/test_cli.py -v
+# Run procedural holes, 3-tone voids, and zero-heatmap markings tests (8 tests):
+python -m unittest tests/test_synthetic_holes.py -v
 
-# Run oblique camera angle tilt stress tests:
-./target_env/bin/python3 -m unittest tests/test_camera_angles.py -v
+# Run oblique camera angle tilt stress tests (7 tests):
+python -m unittest tests/test_camera_angles.py -v
+
+# Run Progressive Resizing dynamic resolution tests (6 tests):
+python -m unittest tests/test_progressive_training.py -v
+
+# Run unified CLI dispatcher tests (5 tests):
+python -m unittest tests/test_cli.py -v
+
+# Run 100-target procedural statistical regression benchmark (1 test):
+python -m unittest tests/test_benchmark_low_res.py -v
 ```
 
 ---

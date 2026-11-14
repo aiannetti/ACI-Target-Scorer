@@ -427,11 +427,12 @@ Source: [`src/target_scorer/gui/annotation_editor.py`](file:///home/antho/target
 
 The desktop application provides an interactive metrology workstation engineered for active learning, precision validation, and competition review.
 
-### A. Sun Valley (`sv-ttk`) Modernization & Theme Engine
+### A. Sun Valley (`sv-ttk`) Modernization, Theme Engine, & Cross-Platform Typography
 The interface implements the Fluent Design-inspired Sun Valley theme via [`sv_ttk`](https://github.com/rdbende/Sun-Valley-ttk-theme):
 * **Dynamic Dark/Light Mode Toggling:** Supports instant theme switching at runtime via `Ctrl+T` or `F10` hotkeys, with automatic dynamic styling adaptation for nested widgets and custom canvas elements.
-* **Modern Switch & Accent Styling:** Uses styled `Switch.TCheckbutton` toggles for overlay activation and `Accent.TButton` widgets for primary user callouts (e.g. Save).
-* **High-DPI Display Support:** Dynamically queries screen DPI (`tk.call('tk', 'scaling')`) and applies proportional font scaling to maintain legibility on 4K/high-density monitors.
+* **Cross-Platform Sans-Serif UI Font Resolution:** On Windows, the editor uses native `Segoe UI`. On non-Windows operating systems (macOS and Linux/Unix), [`resolve_ui_font_family()`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py) inspects installed Tk font families and X11 aliases to select the closest TrueType humanist sans-serif family (e.g. `SF Pro Text` / `Helvetica Neue` on macOS; `Selawik`, `Carlito`, `Inter`, `Noto Sans`, `Liberation Sans`, or `DejaVu Sans` on Linux) while rejecting legacy bitmap `fixed` fallbacks. [`apply_ui_font_to_named_fonts()`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py) synchronizes the resolved family across both standard Tk named fonts (`TkDefaultFont`, `TkTextFont`, `TkHeadingFont`, etc.) and Sun Valley's `SunValley*Font` definitions.
+* **Modern Switch & Accent Styling:** Uses styled `Switch.TCheckbutton` toggles for overlay activation and `Accent.TButton` widgets for primary user callouts (e.g. Save, Auto-Label).
+* **High-DPI Display Support:** Dynamically queries screen DPI and applies proportional font scaling to maintain legibility on 4K/high-density monitors.
 * **Native Windows Integration:** Optimized for Windows 10/11 appearance and DPI scaling. For step-by-step Windows setup, Microsoft Store Python 3.11, and launch instructions, see the [Windows Installation & Quickstart Guide](file:///home/antho/target_scorer/docs/windows_installation_and_quickstart_guide.md).
 
 ### B. Coordinate Space Transformations
@@ -439,9 +440,15 @@ The GUI manages three distinct coordinate systems:
 1. **Canonical Metric Space (Target Space):** Continuous coordinates $(x_c, y_c) \in [0, 1024] \times [0, 1024]$ where $4.0\text{ px} = 1.0\text{ mm}$. All mathematical scoring, group dispersion, and JSON serialization occurs strictly in this domain.
 2. **Viewport Pan/Zoom Space (Canvas Space):** Screen pixel coordinates transformed by scale factor $S \in [0.20, 12.00]$ and origin offsets $(O_x, O_y)$:
    $$x_{\text{canvas}} = x_c \times S + O_x, \quad y_{\text{canvas}} = y_c \times S + O_y$$
-3. **Loupe Sub-Pixel Metrology Space:** High-magnification ($16\times$) localized patch view with sub-pixel interpolation, millimeter ring guides, and flange tangency rings for contentious scoring calls.
+3. **Loupe Sub-Pixel Metrology Space:** High-magnification ($4\times\text{--}16\times$, presets $6\times / 8\times / 12\times$) localized patch view with sub-pixel interpolation, millimeter ring guides, and flange tangency rings for contentious scoring calls.
 
-### C. Asset Synchronization & Copy-On-Save Pipeline
+### C. Unified Discovery (`TargetEntry`) & In-Editor Auto-Labeling (`AutoLabelPipeline`)
+The editor unifies labeled and unlabeled target workflows inside a single interactive queue:
+* **`TargetEntry` Queue Abstraction:** Indexes both verified/candidate `.json` annotations and raw/canonical image files (`.heic`, `.dng`, `.jpg`, `.png`, `.tiff`, `.webp`, `.bmp`), deduplicating stems (`_canonical`, `_raw_photo`, `_raw`, `_review`), excluding `*_review.png` cards, and supporting live `All` / `Unlabeled` / `Labeled` filtering.
+* **Stateful Cached Inference (`AutoLabelPipeline` & `resolve_checkpoint_path`):** Implemented in [`src/target_scorer/data/autolabel.py`](file:///home/antho/target_scorer/src/target_scorer/data/autolabel.py) and re-exported from `target_scorer.data`, [`AutoLabelPipeline`](file:///home/antho/target_scorer/src/target_scorer/data/autolabel.py) caches `HighResHeatmapUNet` and device allocation across single-target (`on_autolabel_current`) and background multi-target (`on_autolabel_all_unlabeled`) predictions. [`resolve_checkpoint_path`](file:///home/antho/target_scorer/src/target_scorer/data/autolabel.py) resolves explicit paths or falls back to `weights/<basename>`.
+* **Configuration & Manual Fallback:** [`AutoLabelSettingsDialog`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py) provides modal controls for checkpoint selection, peak threshold, max shots, and PII redaction; `on_rectify_manual` invokes `TargetRectifier` directly without neural inference for unassisted manual annotation.
+
+### D. Asset Synchronization & Copy-On-Save Pipeline
 When verifying real-world target sets, the editor features an automated `copy-on-save` synchronization pipeline:
 * **User Path Expansion:** Automatically parses relative and tilde (`~`) paths (e.g., `~/private/data/real_targets` or `private/data/real_targets`).
 * **Multi-Format Raw Resolution:** Resolves raw smartphone photographs (`.jpg`, `.jpeg`, `.png`, `.heic`, `.dng`, `.nef`, `.cr2`) using embedded annotation metadata or cross-directory heuristic search.

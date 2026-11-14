@@ -12,9 +12,10 @@ from taking raw smartphone photographs of competition targets on the range, to a
 4. [Phase 3: Model-Assisted Auto-Labeling](#4-phase-3-model-assisted-auto-labeling)
 5. [Phase 4: Active Learning Verification & Human Review](#5-phase-4-active-learning-verification--human-review)
 6. [Phase 5: Competitor Privacy & PII Redaction](#6-phase-5-competitor-privacy--pii-redaction)
-7. [Phase 6: Hybrid Model Training Strategies](#7-phase-6-hybrid-model-training-strategies)
+7. [Phase 6: Model Training Strategies & Progressive Resizing](#7-phase-6-model-training-strategies--progressive-resizing)
 8. [Phase 7: Cloud GPU Acceleration via Google Colab CLI](#8-phase-7-cloud-gpu-acceleration-via-google-colab-cli)
 9. [Phase 8: Production Deployment & Edge Integration](#9-phase-8-production-deployment--edge-integration)
+10. [Platform Guides & Next Steps](#10-platform-guides--next-steps)
 
 ---
 
@@ -102,15 +103,18 @@ The system offers two integrated workflows depending on your environment:
 You can skip manual CLI scripting and point the interactive editor directly at your folder of raw smartphone snaps:
 
 ```bash
-target-scorer annotate raw_range_snaps/
+target-scorer annotate raw_range_snaps/ \
+  --checkpoint weights/target_scoring_hrnet_1024_best.pt \
+  --threshold 0.40 \
+  --copy-to-dir private/data/real_targets
 ```
 
-1. **Raw Photo Preview:** The editor opens the folder, automatically indexes all images (`.jpg`, `.png`, `.heic`, `.dng`), and displays the orientation-corrected raw target photo with an `[UNLABELED]` state badge.
+1. **Raw Photo Preview:** The editor opens the folder, automatically indexes all images (`.jpg`, `.png`, `.heic`, `.dng`, `.tiff`, `.webp`, `.bmp`), and displays the orientation-corrected raw target photo with an `[UNLABELED]` state badge.
 2. **Select NRA Target Type:** Verify or select `B-2` (Slow Fire) or `B-3` (Timed/Rapid Fire) from the top dropdown.
 3. **Trigger Auto-Labeling (`A`):** Press `A` (or click `✨ Auto-Label (A)`). The in-memory [`AutoLabelPipeline`](file:///home/antho/target_scorer/src/target_scorer/data/autolabel.py) rectifies the card, evaluates neural heatmaps, extracts sub-pixel peaks, and renders the calibrated metric card and HUD instantly.
 4. **Instant Verification & Adjustment:** If any contentious line breaks exist, press `E` to launch the **Eagle Eye Scoring Gauge**. Press `Ctrl+Z` at any time to undo or revert.
-5. **Atomic Save (`Ctrl+S`):** Saves the verified `.json` annotation, the rectified `*_canonical.png`, and the verification `*_review.png` card in one action.
-6. **Batch Auto-Labeling in GUI:** Click `⚡ Auto-Label All Unlabeled` to auto-label the entire folder in a background worker thread with live modal progress and cancellation controls.
+5. **Atomic Save (`Ctrl+S`):** Saves the verified `.json` annotation, the rectified `*_canonical.png`, and the verification `*_review.png` card in one action (and exports them when `Copy on Save` / `--copy-to-dir` is enabled).
+6. **Batch Auto-Labeling in GUI:** Click `⚡ Auto-Label All Unlabeled` to auto-label the entire unlabeled queue in a background worker thread with live inline toolbar progress (`Batch: X/Y saved`) and a `⏹ Stop Batch` cancellation toggle.
 
 ### Method 2: Headless Command-Line Batch Auto-Labeling
 For headless servers, automated night runs, or large target collections, use the batch CLI:

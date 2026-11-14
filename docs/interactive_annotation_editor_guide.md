@@ -33,20 +33,21 @@ target-scorer annotate path/to/range_photos
 target-scorer annotate path/to/range_photos/target_001.heic
 
 # Launch on an auto-labeled target directory with custom detection threshold and model checkpoint
-target-scorer annotate private/data/real_targets \
+target-scorer annotate --dir private/data/real_targets \
   --checkpoint weights/target_scoring_hrnet_1024_best.pt \
-  --threshold 0.40
+  --threshold 0.40 \
+  --copy-to-dir private/data/real_targets
 
 # Launch on a specific JSON file with forced NRA B-2 Slow Fire rules
 target-scorer annotate private/data/real_targets/B-2/annotations/target_001.json --target B-2
 ```
 
-If no path argument is provided, the editor automatically scans default locations (`autolabeled_photos/`, `private/data/real_targets/`, `datasets/real_targets/`, `range_photos/`) and loads the first valid targets found.
+If no path argument is provided, the editor automatically scans default locations (`autolabeled_photos/`, `private/data/real_targets/`, `datasets/real_targets/`) and loads the first directory that exists.
 
 ### Unified Target Discovery & Filtering
-The editor natively discovers both labeled and unlabeled targets within the opened folder or file list:
+The editor natively discovers both labeled and unlabeled targets within the opened folder or file list as [`TargetEntry`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py) records:
 * **Supported Formats:** Discovers `.json` target annotations as well as raw/canonical images (`.jpg`, `.jpeg`, `.png`, `.heic`, `.tiff`, `.tif`, `.dng`, `.webp`, `.bmp`).
-* **Artifact De-Duplication:** Automatically pairs images with their existing `.json` annotations so that a card is never duplicated in the target queue.
+* **Artifact De-Duplication:** Automatically pairs images with their existing `.json` annotations (normalizing stems like `_canonical`, `_raw_photo`, `_raw`, `_review`) so that a card is never duplicated in the target queue.
 * **Review Card Exclusion:** Automatically ignores derived verification cards (`*_review.png`) to prevent review artifacts from polluting your target index.
 * **Target Filter Dropdown (`All` / `Unlabeled` / `Labeled`):** Easily filter your queue to jump straight to cards needing initial labeling or cards requiring secondary human verification.
 
@@ -82,12 +83,13 @@ The editor natively discovers both labeled and unlabeled targets within the open
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-The application is themed with the modern **Sun Valley (`sv-ttk`)** Fluent Design system (rounded buttons, sleek high-DPI sprites, sliding switch toggles, and dynamic dark/light mode):
-1. **Top Control Toolbar:** Dataset directory/image pickers, sequential navigation, filter selector (`All` / `Unlabeled` / `Labeled`), NRA target selector (`B-2` / `B-3`), editing mode, caliber dropdown, and in-editor auto-labeling action buttons.
-2. **Export / Copy on Save Bar:** Quick directory destination input, browse dialog, and switch toggle to automatically duplicate verified raw/canonical/annotation pairs on save.
-3. **Interactive Canvas (Center):** High-framerate rendering of the unwarped canonical target card (or raw orientation-corrected photo preview) with calibrated visual overlays and sliding switch controls.
-4. **Metrology HUD & Shot Table (Right):** Elevated `Card.TFrame` ballistic group statistics (Score, Extreme Spread, Mean Radius, COI) and interactive shot table. Selecting any row highlights the corresponding shot on canvas.
-5. **Bottom Status Bar:** Live cursor coordinates (pixel space and millimeter radial distance from bullseye) and workflow state messages.
+The application is themed with the modern **Sun Valley (`sv-ttk`)** Fluent Design system (rounded buttons, sleek high-DPI sprites, sliding switch toggles, and dynamic dark/light mode), with cross-platform typography resolved by [`resolve_ui_font_family`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py) and [`apply_ui_font_to_named_fonts`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py) (`Segoe UI` on Windows, and matching TrueType humanist sans-serif fonts on macOS and Linux to avoid legacy bitmap `fixed` fonts):
+1. **Top Control Toolbar:** Dataset directory/image pickers, sequential navigation, editing mode, caliber dropdown, clear/revert/save actions, and theme toggle.
+2. **Auto-Label & Filter Bar:** Target queue filter (`All` / `Unlabeled` / `Labeled`), labeled/unlabeled counters, NRA target type selector (`B-2` / `B-3`), in-editor auto-label actions, settings button, and inline batch progress readout.
+3. **Export / Copy on Save Bar:** Quick directory destination input, browse dialog, and switch toggle to automatically duplicate verified raw/canonical/annotation pairs on save.
+4. **Interactive Canvas (Center):** High-framerate rendering of the unwarped canonical target card (or raw orientation-corrected photo preview) with calibrated visual overlays and sliding switch controls.
+5. **Metrology HUD & Shot Table (Right):** Elevated `Card.TFrame` target specification card (with `UNLABELED` / `LABELED` status indicator), ballistic group statistics (Score, Extreme Spread, Mean Radius), and interactive shot table. Selecting any row highlights the corresponding shot on canvas.
+6. **Bottom Status Bar:** Live cursor coordinates (pixel space and millimeter radial distance from bullseye) and workflow state messages.
 
 ---
 
@@ -122,19 +124,19 @@ If you are annotating an unusual target card, testing a new caliber without mode
 * Click **`📐 Rectify (Manual)`** to unwarp the raw image into the canonical $1024 \times 1024$ metric grid with 0 shot markers.
 * The aiming black and bullseye origin are centered automatically, allowing you to click directly on the canvas to place and score shots by hand.
 
-#### 3. `⚡ Auto-Label All Unlabeled` (Batch Cloud or Local Processing)
+#### 3. `⚡ Auto-Label All Unlabeled` (Background Batch Processing)
 To auto-label an entire folder of photos in a single click:
-* Click **`⚡ Auto-Label All Unlabeled`** in the top toolbar.
-* A background worker thread processes each unlabeled image sequentially, updating a live modal progress dialog (`Auto-Labeling Target 3 of 18...`).
-* For each photo, the canonical $1024 \times 1024$ image, `.json` annotation, and `*_review.png` verification card are written to disk immediately upon completion.
-* A **Cancel** button is available at any time to gracefully halt the batch after the current target finishes.
+* Click **`⚡ Auto-Label All Unlabeled`** in the auto-label toolbar.
+* A background worker thread processes each unlabeled image sequentially while updating the inline toolbar progress indicator (`Batch: 3/18 saved`) without blocking the main UI.
+* For each photo, the canonical $1024 \times 1024$ image, `.json` annotation, and `*_review.png` verification card are written to disk immediately upon completion. If the active target on screen is processed and has no unsaved manual edits, the canvas automatically updates with the rectified card and predictions.
+* While running, the button transforms into **`⏹ Stop Batch`** so you can gracefully halt the batch after the current target finishes.
 
-#### 4. `⚙ Auto-Label Settings...`
-Click the settings gear to open the configuration dialog:
-* **Model Checkpoint:** Path to PyTorch model weights (default: `weights/target_scoring_hrnet_1024_best.pt`).
-* **Peak Confidence Threshold:** Sensitivity threshold for bullet hole extraction (default: `0.40`). Lower values (e.g. `0.25`) detect faint grease rings; higher values (e.g. `0.55`) enforce high precision.
-* **Max Shots:** Maximum candidate shots to extract per card (default: `10`).
-* **Redact Competitor PII:** Checkbox toggle to automatically blur outer margins and watermark competitor handwriting with `[COMPETITOR REGISTRATION REDACTED]`.
+#### 4. `⚙ Auto-Label Settings...` ([`AutoLabelSettingsDialog`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py))
+Click the settings gear to open the modal configuration dialog:
+* **Checkpoint (`.pt`):** Path to PyTorch model weights (default: `weights/target_scoring_hrnet_1024_best.pt`).
+* **Peak Threshold (`0.05–0.95`):** Sensitivity threshold for bullet hole extraction (default: `0.40`). Lower values (e.g. `0.25`) detect faint grease rings; higher values (e.g. `0.55`) enforce high precision.
+* **Max Shots per Target:** Maximum candidate shots to extract per card (default: `10`, range `1–50`).
+* **Redact Competitor Margin PII (Name, NRA#):** Switch toggle to automatically blur outer margins and watermark competitor handwriting with `[COMPETITOR REGISTRATION REDACTED]`.
 
 ---
 
@@ -142,14 +144,14 @@ Click the settings gear to open the configuration dialog:
 
 Inspecting bullet tears on 1024×1024 targets requires smooth navigation across varying magnification levels:
 
-* **Cursor-Anchored Zoom:** Rotate the **Mouse Wheel** (or `+` / `-` keys). Zooming automatically anchors to the image coordinate directly beneath the cursor, preserving your point of interest.
+* **Cursor-Anchored Zoom:** Rotate the **Mouse Wheel** (or click toolbar **Zoom +** / **Zoom -** buttons). Wheel zooming automatically anchors to the image coordinate directly beneath the cursor, preserving your point of interest.
 * **Smooth Panning:** Click and drag with the **Middle Mouse Button** (Wheel Click) to pan freely across the target card.
 * **Fit to Window (`F`):** Centers the target card and auto-scales the zoom factor so the entire target canvas is visible within the application window.
-* **100% Zoom (`1`):** Resets the canvas to native $1:1$ pixel resolution ($1\text{ screen pixel} = 1\text{ canonical target pixel}$).
+* **100% Zoom (Toolbar `100%` Button):** Resets the canvas to native $1:1$ pixel resolution ($1\text{ screen pixel} = 1\text{ canonical target pixel}$).
 
 ---
 
-## 4. Overlays: Rings, Badges, & Dispersion
+## 5. Overlays: Rings, Badges, & Dispersion
 
 The canvas includes toggleable overlays configured via the canvas sub-toolbar:
 
@@ -170,7 +172,7 @@ For example, `#03:10X` denotes Shot #3 scored as an inner-X 10, while `#07:9` de
 
 ---
 
-## 5. The Eagle Eye Scoring Gauge (Optical Loupe)
+## 6. The Eagle Eye Scoring Gauge (Optical Loupe)
 
 In official precision pistol matches, contentious line breaks (where a bullet hole comes close to touching a higher-value scoring ring) are evaluated using a physical 4x–12x magnifier known as an **Eagle Eye scoring gauge** or scoring loupe.
 
@@ -248,6 +250,7 @@ Bullet hole diameter directly influences whether a close shot breaks an inner sc
 | Caliber Selection | Bullet Diameter ($\text{mm}$) | Bullet Radius ($\text{mm}$) | Standard Discipline |
 | :--- | :---: | :---: | :--- |
 | **`.22 LR (5.69 mm)`** | $5.69\text{ mm}$ ($0.224''$) | $2.845\text{ mm}$ | NRA Precision Pistol .22 Matches |
+| **`.32 S&W Long (7.98 mm)`** | $7.98\text{ mm}$ ($0.314''$) | $3.990\text{ mm}$ | Centerfire .32 Wadcutter Matches |
 | **`9mm / .38 (9.02 mm)`** | $9.02\text{ mm}$ ($0.355''$) | $4.510\text{ mm}$ | Centerfire Pistol Matches |
 | **`.45 ACP (11.48 mm)`** | $11.48\text{ mm}$ ($0.452''$) | $5.740\text{ mm}$ | .45 Caliber Precision Matches |
 
@@ -334,7 +337,6 @@ When reviewing targets from a staging folder (such as `autolabeled_photos/B-2/JP
 | `E` | Global | Toggle Eagle Eye Scoring Gauge dialog |
 | `N` / `P` | Global | Navigate to Next / Previous target in directory |
 | `F` | Global | Fit target canvas to window |
-| `1` | Global | Reset zoom to 100% native resolution |
 | `Del` / `Backspace` | Selected Shot | Delete the selected shot marker |
 | `↑` / `↓` / `←` / `→` | Selected Shot | Nudge marker by $1\text{ px}$ |
 | `Shift + Arrow Keys`| Selected Shot | Nudge marker by $5\text{ px}$ |

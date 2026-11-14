@@ -399,15 +399,16 @@ target-scorer annotate [PATH] [OPTIONS]
 | `--threshold` | `float` | `0.40` | Peak confidence threshold for in-editor auto-labeling. |
 | `--copy-to-dir` | `str` | `None` | Optional destination directory to copy raw photo, canonical image, and updated annotation JSON to on Save. |
 
-### In-Editor Auto-Labeling Features
+### In-Editor Auto-Labeling & GUI Features
 
-* **Unified Target Discovery:** Automatically indexes both `.json` files and raw images (`.jpg`, `.png`, `.heic`, `.tiff`, `.dng`, `.webp`, `.bmp`), excluding review cards (`*_review.png`) and deduplicating image/JSON pairs.
-* **Target Queue Filter:** Filter active target list by `All`, `Unlabeled`, or `Labeled`.
-* **Raw Photo Preview:** Displays orientation-corrected raw target photos with an `[UNLABELED]` state badge before processing.
+* **Unified Target Discovery ([`TargetEntry`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py)):** Automatically indexes both `.json` files and raw/canonical images (`.jpg`, `.jpeg`, `.png`, `.heic`, `.tiff`, `.tif`, `.dng`, `.webp`, `.bmp`), excluding review cards (`*_review.png`) and deduplicating image/JSON pairs.
+* **Target Queue Filter & Type Selection:** Filter the active target list by `All`, `Unlabeled`, or `Labeled`, and select the active NRA target type (`B-2` or `B-3`) directly from the toolbar dropdown.
+* **Raw Photo Preview:** Displays orientation-corrected raw target photos with an `[UNLABELED]` status badge before processing.
 * **`✨ Auto-Label (A)` (Shortcut `A`):** Rectifies and runs in-memory neural inference via cached [`AutoLabelPipeline`](file:///home/antho/target_scorer/src/target_scorer/data/autolabel.py), populating detected shots and bullseye center onto the canvas and HUD. Fully reversible via `Ctrl+Z` (`Undo`), and saved to disk via `Ctrl+S`.
 * **`📐 Rectify (Manual)`:** Rectifies raw target photos to the $1024 \times 1024$ canonical metric grid with 0 shots for pure manual placement.
-* **`⚡ Auto-Label All Unlabeled`:** Background multi-threaded batch auto-labeler with live progress dialog that processes and auto-saves all unlabeled images in the folder.
-* **`⚙ Auto-Label Settings...`:** Modal dialog to configure model checkpoint `.pt`, peak confidence threshold, max shots, and competitor PII redaction.
+* **`⚡ Auto-Label All Unlabeled`:** Background worker thread that sequentially processes and auto-saves all unlabeled images in the queue, updating the inline toolbar progress indicator (`Batch: X/Y saved`) and toggling to `⏹ Stop Batch` for graceful cancellation.
+* **`⚙ Auto-Label Settings...` ([`AutoLabelSettingsDialog`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py)):** Modal dialog to configure model checkpoint `.pt`, peak confidence threshold, max shots per target, and competitor PII redaction.
+* **Cross-Platform Sans-Serif Typography:** On non-Windows operating systems (macOS and Linux), [`resolve_ui_font_family`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py) and [`apply_ui_font_to_named_fonts`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py) automatically resolve installed humanist sans-serif TrueType fonts matching Windows `Segoe UI` across Tk and Sun Valley (`sv-ttk`) named fonts.
 
 ---
 
@@ -596,31 +597,34 @@ scorecard_bgr = render_scoring_inspection_overlay(
 
 ---
 
-### H. Auto-Label Pipeline API (`target_scorer.data.autolabel`)
+### H. Auto-Label Pipeline API (`target_scorer.data` / `target_scorer.data.autolabel`)
 
-The [`AutoLabelPipeline`](file:///home/antho/target_scorer/src/target_scorer/data/autolabel.py) class provides a high-performance, stateful auto-labeling engine designed for interactive applications, GUI workstations, and high-throughput batch scripts. It maintains an in-memory cached instance of [`HighResHeatmapUNet`](file:///home/antho/target_scorer/src/target_scorer/models/unet.py) across calls to avoid model loading overhead.
+The [`AutoLabelPipeline`](file:///home/antho/target_scorer/src/target_scorer/data/autolabel.py) class (re-exported from `target_scorer.data`) provides a high-performance, stateful auto-labeling engine designed for interactive applications, GUI workstations, and high-throughput batch scripts. It maintains an in-memory cached instance of [`HighResHeatmapUNet`](file:///home/antho/target_scorer/src/target_scorer/models/unet.py) across calls to avoid model loading overhead, and uses [`resolve_checkpoint_path`](file:///home/antho/target_scorer/src/target_scorer/data/autolabel.py) to resolve explicit or default `weights/` checkpoints cleanly.
 
 ```python
-from pathlib import Path
-from target_scorer.data.autolabel import AutoLabelPipeline
+from target_scorer.data import AutoLabelPipeline, autolabel_target_image
+from target_scorer.data.autolabel import render_review_card, resolve_checkpoint_path
+
+# Optional: inspect or validate checkpoint resolution
+resolved_ckpt = resolve_checkpoint_path("weights/target_scoring_hrnet_1024_best.pt")
 
 # 1. Initialize pipeline with cached model weights
 pipeline = AutoLabelPipeline(
-    checkpoint_path="weights/target_scoring_hrnet_1024_best.pt",
+    checkpoint_path=resolved_ckpt,
     device_str=None,  # Automatically detects "cuda", "mps", or "cpu"
 )
 
-# 2. In-memory prediction directly on raw file paths, numpy arrays, or PIL images
+# 2. In-memory prediction directly on raw file paths or numpy arrays (zero disk writes)
 annotation, canonical_bgr = pipeline.predict(
-    image_source="path/to/phone_snap.heic",  # str, Path, np.ndarray, or PIL.Image
+    image_source="path/to/phone_snap.heic",  # str, Path, or np.ndarray
     target_type="B-3",
     canvas_size=1024,
     pixels_per_mm=4.0,
-    threshold=0.40,
+    peak_threshold=0.40,
     max_shots=10,
     bullet_diameter_mm=5.69,
-    redact_pii=False,
     target_id="relay_04_card_12",
+    redact_pii=False,
 )
 
 print(f"Detected {len(annotation.shots)} shots:")
@@ -631,11 +635,12 @@ print(f"Total Score: {annotation.total_score} - {annotation.x_count}X")
 print(f"Canonical Image Shape: {canonical_bgr.shape}")  # (1024, 1024, 3)
 ```
 
-#### Legacy / Standalone Batch Auto-Labeling Function:
+#### Standalone Batch Auto-Labeling & Review Card Rendering:
 ```python
-from target_scorer.data.autolabel import autolabel_target_image
+from target_scorer.data import autolabel_target_image
 
 # Runs end-to-end auto-labeling and writes .json, _canonical.png, and _review.png to output directory
+# (Accepts optional pipeline=pipeline to reuse a cached model across many files)
 annotation, json_path, review_path = autolabel_target_image(
     image_source="path/to/raw_target.jpg",
     output_dir="private/data/real_targets",
@@ -646,6 +651,29 @@ annotation, json_path, review_path = autolabel_target_image(
     peak_threshold=0.40,
     max_shots=10,
     redact_pii=True,
+    pipeline=pipeline,
 )
 ```
+
+---
+
+### I. Interactive Annotation Editor API (`target_scorer.gui.annotation_editor`)
+
+```python
+from target_scorer.gui import launch_annotation_editor
+
+launch_annotation_editor(
+    target_path="path/to/range_photos",
+    target_type="B-3",                 # Optional override ("B-2" or "B-3")
+    copy_to_dir="private/data/real_targets",  # Optional Copy-on-Save destination
+    checkpoint_path="weights/target_scoring_hrnet_1024_best.pt",
+    peak_threshold=0.40,
+)
+```
+
+Key exported components in [`target_scorer.gui.annotation_editor`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py):
+* `TargetEntry`: Dataclass representing either a labeled `TargetAnnotation` JSON or an unlabeled target photograph in the unified queue.
+* `AutoLabelSettingsDialog`: Modal configuration dialog for checkpoint path, peak threshold, max shots, and PII redaction.
+* `EagleEyeLoupe`: High-magnification ($4\times\text{--}16\times$, presets $6\times / 8\times / 12\times$) optical scoring gauge dialog with NRA Rule 14.3 inward break inspection.
+* `resolve_ui_font_family(root, platform_name)` & `apply_ui_font_to_named_fonts(family)`: Cross-platform UI font resolver selecting `Segoe UI` on Windows and clean humanist sans-serif fallbacks on macOS/Linux.
 

@@ -9,7 +9,7 @@ The architecture decouples geometric normalization from neural coordinate regres
 2. **Deep Continuous Heatmap Regression:** A High-Resolution Feature Pyramid U-Net ([`HighResHeatmapUNet`](file:///home/antho/target_scorer/src/target_scorer/models/unet.py)) regresses sub-pixel Gaussian heatmaps for bullet impacts (Channel 0) and bullseye centers (Channel 1).
 3. **Ballistic Metrology & Inward Scoring:** A 2D Taylor-series sub-pixel peak extractor calculates continuous coordinates, applies multi-layer defense-in-depth spurious peak filtering (void verification, ink chroma tests, line aspect ratio, seal/header masking), applies official NRA Rule 14.3 inward break scoring, and generates a visual diagnostic HUD with group dispersion statistics (Extreme Spread, Mean Radius, Windage/Elevation bias).
 4. **Privacy, Security & Strict Dataset Isolation:** Automated competitor registration handwriting masking (`--redact-pii`) for competition compliance, strict physical dataset isolation via the private submodule `aci-target-scorer-private-data` (`private/data/real_targets`), and Git history scrubbing with `git-filter-repo` (purging historical commit `9a8e897`) to prevent proprietary/PII leaks.
-5. **Interactive Desktop GUI & Virtual Loupe:** [`annotation_editor.py`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py) provides real-time point-and-click marker adjustments and an optical **Eagle Eye Scoring Gauge** dialog simulating physical 4x–12x scoring magnifiers.
+5. **Interactive Desktop GUI & Virtual Loupe:** [`annotation_editor.py`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py) provides unified target discovery (`TargetEntry` for both `.json` annotations and raw images), in-editor single & background-batch auto-labeling via cached [`AutoLabelPipeline`](file:///home/antho/target_scorer/src/target_scorer/data/autolabel.py), manual rectification, `AutoLabelSettingsDialog`, cross-platform sans-serif typography (`resolve_ui_font_family`, `apply_ui_font_to_named_fonts`), real-time point-and-click marker adjustments, and an optical **Eagle Eye Scoring Gauge** dialog simulating physical 4x–12x scoring magnifiers.
 
 ```
                       [ Raw Smartphone Photograph / Buffer ]
@@ -138,29 +138,41 @@ The **Harmonic 256-Grid Progression** enforces uniform step properties ($+256\te
 
 ```
 src/target_scorer/
-├── config.py             # TargetConfig, TrainConfig, TargetRingsConfig
-├── cli.py                # Unified CLI entrypoint (target-scorer)
-├── infer.py              # Inference, inward scoring, HUD overlay, FileNotFoundError validation
-├── train.py              # Single-resolution & Progressive Resizing training pipeline
-├── colab_runner.py       # Automated cloud GPU orchestrator (Google Colab CLI)
+├── __init__.py               # Public exports & lazy CLI/GUI loaders
+├── config.py                 # TargetConfig, TrainConfig, TargetRingsConfig, ShotAnnotation
+├── cli.py                    # Unified CLI entrypoint (target-scorer)
+├── infer.py                  # Inference, inward scoring, HUD overlay, FileNotFoundError validation
+├── train.py                  # Single-resolution & Progressive Resizing training pipeline
+├── colab_runner.py           # Automated cloud GPU orchestrator (Google Colab CLI)
+├── data/
+│   ├── __init__.py           # Exports schema, datasets, AutoLabelPipeline, autolabel_target_image
+│   ├── schema.py             # TargetAnnotation & AnnotatedShot schema & JSON I/O
+│   ├── real_dataset.py       # RealTargetDataset PyTorch ingestion & augmentations
+│   ├── hybrid_dataset.py     # HybridTargetDataset (Option A hybrid & Option B pure real)
+│   └── autolabel.py          # AutoLabelPipeline, resolve_checkpoint_path, & review card rendering
 ├── geometry/
-│   ├── canonical_loader.py # Format-agnostic ingestion (HEIC, RAW, buffers, EXIF, sRGB CMS)
-│   └── rectifier.py      # Classical ellipse fitting & homography rectification
+│   ├── __init__.py
+│   ├── canonical_loader.py   # Format-agnostic ingestion (HEIC, RAW, buffers, EXIF, sRGB CMS)
+│   └── rectifier.py          # Classical ellipse fitting & homography rectification
 ├── gui/
-│   └── annotation_editor.py # Interactive GUI & Eagle Eye optical scoring loupe
+│   ├── __init__.py
+│   └── annotation_editor.py  # Interactive GUI, TargetEntry, AutoLabelSettingsDialog, Eagle Eye Loupe
 ├── metrology/
-│   ├── peaks.py          # 2D Taylor-series peaks & defense-in-depth spurious filtering
-│   ├── scoring.py        # NRA B-2 / B-3 inward scoring, math.isfinite validation, ballistics
-│   └── visualization.py  # Diagnostic scorecard overlay, 2D/4D channel auto-conversion, PII redaction
+│   ├── __init__.py
+│   ├── peaks.py              # 2D Taylor-series peaks & defense-in-depth spurious filtering
+│   ├── scoring.py            # NRA B-2 / B-3 inward scoring, math.isfinite validation, ballistics
+│   └── visualization.py      # Diagnostic scorecard overlay, 2D/4D channel auto-conversion, PII redaction
 ├── models/
-│   ├── unet.py           # Fully convolutional HighResHeatmapUNet & ConvBlock
-│   └── loss.py           # Adaptive Wing Loss
+│   ├── __init__.py
+│   ├── unet.py               # Fully convolutional HighResHeatmapUNet & ConvBlock
+│   └── loss.py               # Adaptive Wing Loss
 └── synthetic/
-    ├── canvas.py         # Cardboard textures, standard bullseyes, continuous Gaussian heatmaps
-    ├── holes.py          # Bullet stamping, ragged fibers, 3-tone voids, 4-zone stratified placement
-    ├── markings.py       # Official NRA seal, printed headers, looped handwriting & scorer marks (0.0 hmap)
-    ├── generator.py      # Facade re-exporting canvas, holes, and markings routines
-    └── dataset.py        # Procedural PyTorch dataset with real-world augmentations
+    ├── __init__.py           # Submodule exports & facade integration
+    ├── canvas.py             # Cardboard textures, standard bullseyes, continuous Gaussian heatmaps
+    ├── holes.py              # Bullet stamping, ragged fibers, 3-tone voids, 4-zone stratified placement
+    ├── markings.py           # Official NRA seal, printed headers, looped handwriting & scorer marks (0.0 hmap)
+    ├── generator.py          # Facade re-exporting canvas, holes, and markings routines
+    └── dataset.py            # Procedural PyTorch dataset with real-world augmentations
 ```
 
 ---
@@ -275,8 +287,13 @@ target-scorer train \
 
 ### E. Interactive Annotation GUI (`target-scorer annotate`)
 ```bash
-# Launch interactive GUI on auto-labeled targets
-target-scorer annotate private/data/real_targets
+# Launch interactive GUI on auto-labeled targets or unlabeled raw photos
+target-scorer annotate private/data/real_targets \
+    --checkpoint weights/target_scoring_hrnet_1024_best.pt \
+    --threshold 0.40
+
+# Explicit directory, target type override, and copy-on-save destination
+target-scorer annotate --dir range_photos --target B-3 --copy-to-dir private/data/real_targets
 ```
 
 ### F. Assisted Auto-Labeling & Active Learning (`target-scorer autolabel`)
@@ -367,6 +384,7 @@ python -c "import sys, torch; print(f'Python: {sys.version.split()[0]} | CUDA: {
 [Sprint 7: Format-Agnostic Ingestion]       --> COMPLETED (HEIC, RAW/DNG, Picamera2 memory buffers)
 [Sprint 8: Real Target Training & Tooling]  --> COMPLETED (target_scorer/data/, autolabel, hybrid dataset)
 [Sprint 9: Interactive Annotation GUI]      --> COMPLETED (annotation_editor.py, Eagle Eye Loupe)
-[Sprint 10: Progressive Resizing Pipeline]  --> COMPLETED (Harmonic 256-Grid curriculum 256->1024)
+[Sprint 10: Progressive Resizing Pipeline]   --> COMPLETED (Harmonic 256-Grid curriculum 256->1024)
 [Sprint 11: Modularization & Defense-in-Depth] --> COMPLETED (canvas/holes/markings split, peak filtering)
+[Sprint 12: In-Editor Auto-Labeling & UI Polish] --> COMPLETED (AutoLabelPipeline, TargetEntry, batch GUI, cross-platform fonts)
 ```

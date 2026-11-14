@@ -47,7 +47,7 @@ The Microsoft Store provides the cleanest, safest, and most reliable method to i
 
 ### Why Python 3.11 is Recommended
 
-You might wonder why we install Python 3.11 instead of newer versions like 3.12 or 3.13:
+While [`pyproject.toml`](file:///home/antho/target_scorer/pyproject.toml) supports Python **3.9 through 3.12** (`requires-python = ">=3.9"`), we recommend **Python 3.11** on Windows:
 * **PyTorch Official Binary Compatibility:** PyTorch (`torch`) and computer vision libraries publish pre-compiled C++/CUDA binary wheels built and rigorously tested for Python 3.11.
 * **Zero C++ Compiler Headaches:** Bleeding-edge Python releases frequently lack pre-compiled binary wheels for Windows, causing standard package managers to attempt building native C++ libraries from source—which fails unless Visual Studio C++ Build Tools are installed.
 * **Hardware Acceleration Stability:** NVIDIA CUDA 11.8 and 12.1 runtime libraries have mature, zero-friction support on Python 3.11 for Windows.
@@ -145,7 +145,7 @@ This pathway installs `target-scorer` as an isolated Windows application using `
 
 ### Pathway B: Full Development & Training Setup (Power Users)
 
-Follow this pathway to clone the source code, inspect models, run the 113-test automated test suite, or perform GPU-accelerated neural training.
+Follow this pathway to clone the source code, inspect models, run the 123-test automated test suite across 10 modules, or perform GPU-accelerated neural training.
 
 #### Step 1: Navigate to Documents and Clone Repository
 ```powershell
@@ -187,7 +187,10 @@ uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu
 ```powershell
 uv pip install -e .
 ```
-*(Or install with cloud Colab orchestration tools included: `uv pip install -e ".[colab]"`).*
+Optional dependency extras in [`pyproject.toml`](file:///home/antho/target_scorer/pyproject.toml):
+* `uv pip install -e ".[dev]"` — Adds `pytest`, `ruff`, `coverage`, and `matplotlib`.
+* `uv pip install -e ".[colab]"` — Adds `google-colab-cli` (automatically selected on Python 3.12+; on Python 3.11, install via `uv tool install google-colab-cli`).
+* `uv pip install -e ".[all]"` — Installs both `[colab]` and `[dev]` optional tools.
 
 #### Step 7: Verify CUDA Acceleration
 Run this quick Python command:
@@ -237,11 +240,11 @@ python -c "import torch; print('CUDA Available:', torch.cuda.is_available(), '| 
      Once activated, `target-scorer` is directly available.
 
 ### Issue 4: Running the Automated Test Battery
-To ensure everything is working properly on your Windows machine, run the complete 113-test suite:
+To ensure everything is working properly on your Windows machine, run the complete 123-test suite (across 10 test modules):
 ```powershell
 python -m unittest discover tests -v
 ```
-All 113 tests should pass with an `OK` summary.
+All 123 tests should pass with an `OK` summary.
 
 ---
 
@@ -253,9 +256,11 @@ Once installed, use these copy-pasteable commands in PowerShell:
 ```powershell
 target-scorer annotate
 ```
-Or open a specific target directory:
+Or open a specific target directory (of JSON annotations or raw range photos) with in-editor auto-labeling settings:
 ```powershell
-target-scorer annotate datasets\calibration_targets
+target-scorer annotate datasets\calibration_targets `
+  --checkpoint weights\target_scoring_hrnet_1024_best.pt `
+  --threshold 0.40
 ```
 
 ### 2. Score a Target Photograph (iPhone HEIC, Android JPG, or Camera RAW)

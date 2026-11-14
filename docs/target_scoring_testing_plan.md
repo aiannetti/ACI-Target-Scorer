@@ -104,33 +104,59 @@ Bullet Radius = 5.69 mm / 2 = 2.845 mm
 
 ---
 
-### Module 4: Real Target Datasets, Schema, & Active Learning (`tests/test_real_dataset.py`)
+### Module 4: Real Target Datasets, Schema, & Active Learning (`tests/test_real_dataset.py` — 21 Tests)
 
-*Objective:* Verify `TargetAnnotation` JSON schemas, `RealTargetDataset` Gaussian heatmaps and augmentations, `HybridTargetDataset` blending (Options A & B), and `autolabel_target_image` candidate extraction.
+*Objective:* Verify `TargetAnnotation` JSON schemas, `RealTargetDataset` Gaussian heatmaps and augmentations, `HybridTargetDataset` blending (Options A & B), `autolabel_target_image`, and cached in-memory `AutoLabelPipeline` predictions.
 
 | Test ID | Condition | Inputs / Ground Truth | Verification Criteria | Status |
 | :--- | :--- | :--- | :--- | :---: |
-| **DAT-01** | Schema Round-Trip | `AnnotatedShot` dataclass instances | Dict and JSON serialization preserve exact coordinates and score values. | **PASS** |
-| **DAT-02** | TargetAnnotation JSON I/O | Full target card annotation file | Deserializes `TargetAnnotation` and returns continuous `(N, 2)` NumPy array. | **PASS** |
-| **DAT-03** | Calibration Dataset Loading | `datasets/calibration_targets` manifest | Loads matching image and annotation pairs; produces $(3, H, W)$ tensors. | **PASS** |
-| **DAT-04** | Continuous Gaussian Heatmaps | Real target shot coordinates | Renders exact 2-channel 2D sub-pixel Gaussian regression targets ($\sigma = 3.2\text{ px}$). | **PASS** |
-| **DAT-05** | Virtual Epoch Expansion | Small dataset repeated across virtual epoch | Indexing beyond dataset size wraps cleanly with randomized augmentations. | **PASS** |
-| **DAT-06** | PyTorch DataLoader Batching | `RealTargetDataset` + `custom_collate_fn` | Batches images, heatmaps, and variable-length coordinate lists. | **PASS** |
-| **DAT-07** | Option B Pure Real Training | `HybridTargetDataset` with `real_ratio = 1.0` | Yields 100% real target samples for rapid domain adaptation. | **PASS** |
-| **DAT-08** | Option A Hybrid Blending | `HybridTargetDataset` with `real_ratio = 0.5` | Blends real and procedural synthetic targets with stochastic ratio. | **PASS** |
-| **DAT-09** | Synthetic Fallback | Missing or invalid real data directory | Gracefully falls back to 100% synthetic procedural training with warning. | **PASS** |
-| **DAT-10** | Assisted Auto-Labeling | Smartphone target photo (`autolabel`) | Unwarps to canonical space, detects peaks, writes JSON and review card. | **PASS** |
+| **DAT-01** | Schema Round-Trip | `AnnotatedShot` & `TargetAnnotation` | Dict, JSON file, raw JSON string, empty shots, and legacy `x`/`y` keys deserialize cleanly. | **PASS** |
+| **DAT-02** | Calibration & Nested Discovery | `datasets/calibration_targets` & nested subdirs | Loads matching image/annotation pairs across flat and nested layouts; strictly excludes `*_review.png`. | **PASS** |
+| **DAT-03** | Continuous Gaussian Heatmaps | Real target shot coordinates | Renders exact 2-channel 2D sub-pixel Gaussian regression targets ($\sigma = 3.2\text{ px}$); transforms coordinates under augmentations. | **PASS** |
+| **DAT-04** | Virtual Epoch & Batching | `RealTargetDataset` + `custom_collate_fn` | Wraps virtual epoch indexing cleanly; batches images, heatmaps, and variable-length coordinate lists. | **PASS** |
+| **DAT-05** | Hybrid Blending (Options A & B) | `HybridTargetDataset` (`1.0`, `0.5`, `0.0`, invalid dir) | Pure real, stochastic hybrid, pure synthetic, deterministic validation, and fallback on invalid dir. | **PASS** |
+| **DAT-06** | Assisted Auto-Labeling & Caching | `autolabel_target_image` & `AutoLabelPipeline` | Unwarps to canonical space, caches model weights, runs `predict()` with zero disk writes, and supports `--redact-pii`. | **PASS** |
+
+---
+
+### Module 5: Interactive Annotation Editor & Cross-Platform UI (`tests/test_annotation_editor.py` — 18 Tests)
+
+*Objective:* Verify headless `AnnotationEditor` persistence, Eagle Eye loupe inspection, Sun Valley theme toggling, unified `TargetEntry` discovery, in-editor single & batch auto-labeling, manual rectification, and cross-platform UI font resolution.
+
+| Test ID | Scope | Verification Criteria | Status |
+| :--- | :--- | :--- | :---: |
+| **GUI-01** | Shot Editing & Persistence | Load JSON, add/move/delete shots, undo, recalculate scores, atomic save, copy-on-save export, and `render_review_card`. | **PASS** |
+| **GUI-02** | Sun Valley Theme & Loupe | Dark/light theme toggling, combobox styling, Eagle Eye loupe sub-pixel inspection/nudging/cleanup, treeview recursion guard. | **PASS** |
+| **GUI-03** | Unified Discovery & Auto-Label | Mixed labeled/unlabeled `TargetEntry` discovery, `All`/`Unlabeled`/`Labeled` filtering, `B-2`/`B-3` switching, `on_autolabel_current` + undo, `on_rectify_manual`, `on_autolabel_all_unlabeled` batch, missing checkpoint warning. | **PASS** |
+| **GUI-04** | Cross-Platform UI Fonts | `resolve_ui_font_family` & `apply_ui_font_to_named_fonts` select `Segoe UI` on Windows and non-bitmap sans-serif fallbacks on macOS/Linux. | **PASS** |
+
+---
+
+### Module 6: Additional Automated Test Modules (54 Tests across 6 Modules)
+
+| Test Module | Test Count | Scope & Coverage |
+| :--- | :---: | :--- |
+| `tests/test_low_res_metrology.py` | **33** | NRA B-2/B-3 inward scoring, Extreme Spread/Mean Radius/MOA, 2D Taylor sub-pixel peaks, defense-in-depth spurious peak filtering, visualization channel normalization |
+| `tests/test_colab_runner.py` | **16** | `colab_runner.py` binary resolution, usage parsing, session management, chunked upload, progressive stage parsing, and `create_colab_bundle.py` exclusions |
+| `tests/test_canonical_loader.py` | **8** | Format-independent ingestion (HEIC, RAW, TIFF, PNG, JPEG, WebP, BMP), bytes/BytesIO, NumPy buffers, EXIF 1–8, Display P3 CMS |
+| `tests/test_synthetic_holes.py` | **8** | 3-tone bullet void penetration (`scanner_white`, `dark_void`, `tan_backer`), ragged holes, keyholes, 4-zone placement, zero-heatmap markings/seals |
+| `tests/test_camera_angles.py` | **7** | Perspective tilt recovery, roll invariance, specular glare inpainting, Laplacian blur gate |
+| `tests/test_progressive_training.py` | **6** | Harmonic 256-Grid curriculum & dynamic spatial resizing ($256 \to 512 \to 768 \to 1024$) preserving optimizer momentum |
+| `tests/test_cli.py` | **5** | Unified `target-scorer` CLI dispatcher routing and argument parsing across subcommands |
+| `tests/test_benchmark_low_res.py` | **1** | 100-target procedural statistical regression benchmark |
+
+**Full Test Suite Summary:** **123 test methods across 10 test modules** (`python -m unittest discover tests/ -v`).
 
 ---
 
 ## 4. Execution & Implementation Roadmap
 
 ### Phase 1: Parameterize Resolution in Core Engine [Completed ✓]
-- Dynamic canvas scaling across $256$, $512$, $800$, and $1024\text{ px}$.
+- Dynamic canvas scaling across $256$, $512$, $768$, $800$, and $1024\text{ px}$ (with the Harmonic 256-Grid `256 -> 512 -> 768 -> 1024` serving as the progressive training curriculum).
 
 ### Phase 2: Execute Unit & Mathematical Assertions [Completed ✓]
-- 35 metrology assertions passing in `tests/test_low_res_metrology.py`.
-- 5 camera angle assertions passing in `tests/test_camera_angles.py`.
+- 33 metrology assertions passing in `tests/test_low_res_metrology.py`.
+- 7 camera angle assertions passing in `tests/test_camera_angles.py`.
 
 ### Phase 3: Benchmark Low-Res Statistical Performance [Completed ✓]
 - 100 procedural targets at $256 \times 256$ evaluated (`tests/test_benchmark_low_res.py`):
@@ -147,7 +173,7 @@ Bullet Radius = 5.69 mm / 2 = 2.845 mm
 - PII redaction (`--redact-pii`) masking header registrations.
 
 ### Phase 6: $1024 \times 1024$ Cloud GPU Training & Warm-Start [Completed ✓]
-- 1-Click cloud GPU orchestration via Google Colab CLI (`target-scorer colab-train`).
+- 1-Click cloud GPU orchestration via Google Colab CLI (`target-scorer colab-train`, `colab-progressive-train`, `colab-autolabel`).
 - Warm-start fine-tuning (`--initial-weights`) reaching **$98.9\%$ recall** and **$0.335\text{ mm}$ sub-pixel error** on NVIDIA A100.
 - Symmetrical 10-shot competition evaluation scorecards generated for NRA B-2 (`96 / 100`) and B-3 (`100 - 7X / 100`).
 
@@ -155,12 +181,16 @@ Bullet Radius = 5.69 mm / 2 = 2.845 mm
 - Format-independent ingestion layer (`target_scorer/geometry/canonical_loader.py`): Apple HEIC/HEIF, Apple ProRAW DNG, 8/16-bit TIFFs, WebP, PNG, JPEG.
 - Lossless EXIF orientation auto-transposition (tags 1–8) and Display P3 to sRGB Color Management System (CMS).
 - Direct in-memory frame ingestion for Raspberry Pi `Picamera2` and OpenCV video capture streams.
-- 7 comprehensive unit test suites passing in `tests/test_canonical_loader.py`.
+- 8 comprehensive unit tests in `tests/test_canonical_loader.py`.
 
 ### Phase 8: Real Target Dataset Ingestion & Assisted Active Learning [Completed ✓]
 - Standardized `TargetAnnotation` & `AnnotatedShot` schema with continuous sub-pixel coordinate arrays.
 - Sample calibration dataset generation (`datasets/calibration_targets/`) with 6 realistic B-2/B-3 phone photos and annotations.
 - `RealTargetDataset` with continuous 2-channel 2D Gaussian heatmaps and photometric domain augmentations.
 - `HybridTargetDataset` with balanced sampling (Option A hybrid and Option B pure real fine-tuning).
-- `target-scorer autolabel` CLI for automated candidate proposal and human-in-the-loop review cards.
-- 11 unit tests passing in `tests/test_real_dataset.py` (54/54 tests passing total).
+- `target-scorer autolabel` CLI and `AutoLabelPipeline` for automated candidate proposal and human-in-the-loop review cards.
+- 21 unit tests in `tests/test_real_dataset.py`.
+
+### Phase 9: Interactive GUI, In-Editor Auto-Labeling, & Cross-Platform UI Polish [Completed ✓]
+- Unified `TargetEntry` discovery, `All`/`Unlabeled`/`Labeled` filtering, `AutoLabelSettingsDialog`, in-editor single & background-batch auto-labeling, manual rectification, and cross-platform sans-serif UI font resolution (`resolve_ui_font_family`, `apply_ui_font_to_named_fonts`).
+- 18 unit tests in `tests/test_annotation_editor.py` (**123 total test methods across 10 modules**).

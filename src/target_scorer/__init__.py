@@ -41,6 +41,12 @@ _LAZY_EXPORTS = {
     "validate_one_epoch": ("target_scorer.train", "validate_one_epoch"),
     "calculate_localization_metrics": ("target_scorer.train", "calculate_localization_metrics"),
     "launch_annotation_editor": ("target_scorer.gui.annotation_editor", "launch_annotation_editor"),
+    "AnnotatedShot": ("target_scorer.data.schema", "AnnotatedShot"),
+    "TargetAnnotation": ("target_scorer.data.schema", "TargetAnnotation"),
+    "RealTargetDataset": ("target_scorer.data.real_dataset", "RealTargetDataset"),
+    "HybridTargetDataset": ("target_scorer.data.hybrid_dataset", "HybridTargetDataset"),
+    "AutoLabelPipeline": ("target_scorer.data.autolabel", "AutoLabelPipeline"),
+    "autolabel_target_image": ("target_scorer.data.autolabel", "autolabel_target_image"),
 }
 
 
@@ -91,4 +97,11 @@ __all__ = [
     "generate_synthetic_target_sample",
     "SyntheticTargetDataset",
     "custom_collate_fn",
+    "launch_annotation_editor",
+    "AnnotatedShot",
+    "TargetAnnotation",
+    "RealTargetDataset",
+    "HybridTargetDataset",
+    "AutoLabelPipeline",
+    "autolabel_target_image",
 ]
