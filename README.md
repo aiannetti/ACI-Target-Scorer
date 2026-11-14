@@ -33,10 +33,13 @@ For deep dives into workflows, algorithms, metrology grounding, and APIs, consul
   * **NRA B-3 (Rule 4.3):** 50 ft Timed & Rapid Fire. Innermost ring is the X-ring ($0.90'' = 22.86\text{ mm}$ dia). Scored as `Score - X / Max` (e.g. `100 - 7X / 100`).
   * **Inward Break Evaluation (Rule 14.3):** Tangent touches on scoring ring boundaries award the higher score value, evaluated via caliber-aware flange geometry: $d_{\text{gauge}} = \max(0, d_{\text{radial}} - R_{\text{bullet}})$.
 * **Interactive Annotation Editor & Eagle Eye Scoring Gauge:**
-  * Real-time desktop GUI (`target-scorer annotate`) for point-and-click correction of bullet hole coordinates and bullseye origins.
+  * Real-time desktop GUI (`target-scorer annotate`) for reviewing, adding, and adjusting bullet hole coordinates and bullseye origins.
+  * **Unified Target Discovery:** Opens both existing `.json` annotations and unlabeled raw target photographs (`.jpg`, `.heic`, `.png`, `.dng`, `.webp`) with queue filtering (`All` / `Unlabeled` / `Labeled`).
+  * **In-Editor Auto-Labeling (`✨ Auto-Label (A)`):** Triggers instant in-memory rectification and U-Net prediction via cached [`AutoLabelPipeline`](file:///home/antho/target_scorer/src/target_scorer/data/autolabel.py), with full undo (`Ctrl+Z`) and atomic saving (`Ctrl+S`).
+  * **Manual Rectification & Batch Processing:** Includes `📐 Rectify (Manual)` for unassisted metric placement and `⚡ Auto-Label All Unlabeled` for background batch processing with live progress.
   * Virtual high-magnification **Eagle Eye Loupe** ($6\times$ to $12\times$) with engraved caliber reticles (.22 LR, 9mm, .45 ACP), sub-pixel crosshairs, fine nudge pads, and automated line-break rulings.
 * **Assisted Auto-Labeling & Active Learning Flywheel:**
-  * Model-assisted labeling tool (`target-scorer autolabel`) generating canonical unwarped crops, standardized `TargetAnnotation` JSON annotations, and visual review cards with green crosshairs for rapid human review.
+  * Model-assisted labeling tools available both in-GUI and headless CLI (`target-scorer autolabel`) generating canonical unwarped crops, standardized `TargetAnnotation` JSON annotations, and visual review cards with green crosshairs for rapid human review.
 * **Format-Agnostic Ingestion & Zero-Disk Edge Streaming:**
   * Native decoding of **Apple HEIC/HEIF** and **Apple ProRAW DNG** (via `pillow-heif`), Android Ultra HDR / JPEG, desktop formats (PNG, TIFF, BMP, WebP), stdin binary streaming (`-`), and direct in-memory edge buffers (`np.ndarray` from Raspberry Pi `Picamera2` or OpenCV video feeds).
   * Automatic EXIF orientation normalization (tags 1–8) and Display P3 to standard sRGB color profile mapping.
@@ -71,8 +74,10 @@ target-scorer infer \
   --scale 4.0 \
   --output scored_card_b3.png
 
-# 2. Launch Interactive Annotation Editor & Eagle Eye Loupe
-target-scorer annotate private/data/real_targets
+# 2. Launch Interactive Annotation Editor (opens raw target photos or JSON annotations)
+target-scorer annotate /path/to/range_photos \
+  --checkpoint weights/target_scoring_hrnet_1024_best.pt \
+  --threshold 0.40
 
 # 3. 1-Click Multi-Stage Progressive Cloud Training (Harmonic 256-Grid on NVIDIA A100)
 target-scorer colab-progressive-train \

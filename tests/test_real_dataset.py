@@ -9,6 +9,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import torch
@@ -16,6 +17,10 @@ from torch.utils.data import DataLoader
 
 from target_scorer.config import TrainConfig
 from target_scorer.data.autolabel import autolabel_target_image
+try:
+    from target_scorer.data.autolabel import AutoLabelPipeline
+except ImportError:
+    AutoLabelPipeline = None
 from target_scorer.data.hybrid_dataset import HybridTargetDataset
 from target_scorer.data.real_dataset import RealTargetDataset
 from target_scorer.data.schema import AnnotatedShot, TargetAnnotation
@@ -486,6 +491,118 @@ class TestAutoLabeling(unittest.TestCase):
 
             restored = TargetAnnotation.from_json(json_path)
             self.assertTrue(restored.metadata.get("redact_pii"))
+
+    def test_autolabel_pipeline_init_and_cache(self):
+        """Verifies AutoLabelPipeline lazy initialization, loaded_checkpoint property, and model caching."""
+        if AutoLabelPipeline is None:
+            self.skipTest("AutoLabelPipeline not yet implemented by Track 1.")
+
+        ckpt_path = "weights/target_scoring_hrnet_1024_best.pt"
+        pipeline = AutoLabelPipeline(checkpoint_path=ckpt_path, device_str="cpu")
+        self.assertEqual(pipeline.checkpoint_path, ckpt_path)
+
+        # 1. Model should be lazily loaded (None before call)
+        self.assertIsNone(pipeline.model)
+        self.assertIsNone(pipeline.loaded_checkpoint)
+
+        # 2. Mock checkpoint loading and ensure_model_loaded / predict
+        dummy_state = {"model_state_dict": {}}
+        with patch("torch.load", return_value=dummy_state) as mock_torch_load, \
+             patch("os.path.exists", return_value=True), \
+             patch("target_scorer.models.unet.HighResHeatmapUNet.load_state_dict"):
+            pipeline.ensure_model_loaded()
+            self.assertIsNotNone(pipeline.model)
+            self.assertTrue(pipeline.loaded_checkpoint.endswith(ckpt_path))
+            initial_model = pipeline.model
+            self.assertEqual(mock_torch_load.call_count, 1)
+
+            # Calling ensure_model_loaded again with same checkpoint must reuse cached weights
+            pipeline.ensure_model_loaded(ckpt_path)
+            self.assertIs(pipeline.model, initial_model)
+            self.assertEqual(mock_torch_load.call_count, 1)
+
+    def test_autolabel_pipeline_predict_in_memory_no_disk_writes(self):
+        """Verifies pipeline.predict() operates entirely in-memory with zero disk side-effects."""
+        if AutoLabelPipeline is None:
+            self.skipTest("AutoLabelPipeline not yet implemented by Track 1.")
+
+        dummy_img = np.full((1024, 1024, 3), 230, dtype=np.uint8)
+        import cv2
+        cv2.circle(dummy_img, (512, 512), 155, (20, 20, 20), -1)
+
+        pipeline = AutoLabelPipeline(checkpoint_path=None, device_str="cpu")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            orig_cwd = os.getcwd()
+            os.chdir(tmp_dir)
+            try:
+                # Mock forward pass returning blank heatmaps
+                mock_model = MagicMock()
+                mock_model.return_value = torch.zeros((1, 2, 1024, 1024), dtype=torch.float32)
+                pipeline.ensure_model_loaded = MagicMock(return_value=mock_model)
+
+                ann, canon_bgr = pipeline.predict(
+                    image_source=dummy_img,
+                    target_type="B-2",
+                    canvas_size=1024,
+                    pixels_per_mm=4.0,
+                    peak_threshold=0.40,
+                    max_shots=10,
+                    target_id="in_memory_test",
+                )
+
+                self.assertIsInstance(ann, TargetAnnotation)
+                self.assertEqual(ann.target_id, "in_memory_test")
+                self.assertEqual(ann.target_type, "B-2")
+                self.assertEqual(ann.canvas_size, 1024)
+                self.assertEqual(ann.pixels_per_mm, 4.0)
+                self.assertIsInstance(canon_bgr, np.ndarray)
+                self.assertEqual(canon_bgr.shape, (1024, 1024, 3))
+
+                # Verify predict() wrote ZERO files to disk
+                files_in_dir = list(Path(tmp_dir).iterdir())
+                self.assertEqual(len(files_in_dir), 0, f"predict() created unexpected files on disk: {files_in_dir}")
+            finally:
+                os.chdir(orig_cwd)
+
+    def test_autolabel_target_image_with_pipeline_backwards_compat(self):
+        """Verifies autolabel_target_image supports optional pipeline parameter while maintaining full backwards compatibility."""
+        if not self.calib_dir.exists():
+            self.skipTest(f"Calibration directory '{self.calib_dir}' not found.")
+
+        raw_photo = self.calib_dir / "raw" / "calib_b2_001_raw_photo.jpg"
+        if not raw_photo.exists():
+            self.skipTest(f"Calibration raw photo '{raw_photo}' not found.")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # 1. Backwards compatibility invocation without pipeline argument
+            ann1, json1, rev1 = autolabel_target_image(
+                image_source=raw_photo,
+                output_dir=tmp_dir,
+                checkpoint_path=None,
+                target_type="B-2",
+                canvas_size=256,
+                pixels_per_mm=2.0,
+                target_id="compat_test_legacy",
+            )
+            self.assertTrue(json1.exists())
+            self.assertTrue(rev1.exists())
+            self.assertEqual(ann1.target_id, "compat_test_legacy")
+
+            # 2. Invocations passing explicit pipeline instance
+            if AutoLabelPipeline is not None:
+                pipeline = AutoLabelPipeline(checkpoint_path=None, device_str="cpu")
+                ann2, json2, rev2 = autolabel_target_image(
+                    image_source=raw_photo,
+                    output_dir=tmp_dir,
+                    pipeline=pipeline,
+                    target_type="B-2",
+                    canvas_size=256,
+                    pixels_per_mm=2.0,
+                    target_id="compat_test_pipeline",
+                )
+                self.assertTrue(json2.exists())
+                self.assertTrue(rev2.exists())
+                self.assertEqual(ann2.target_id, "compat_test_pipeline")
 
 
 if __name__ == "__main__":

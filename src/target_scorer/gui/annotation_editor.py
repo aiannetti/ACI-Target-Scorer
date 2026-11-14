@@ -4,14 +4,16 @@ Allows rapid point-and-click correction of missed or misidentified bullet holes 
 """
 
 import copy
+from dataclasses import dataclass
 import json
 import math
 import os
 import shutil
 import sys
+import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import cv2
 import numpy as np
@@ -23,7 +25,24 @@ from tkinter import filedialog, messagebox, ttk
 from target_scorer.config import TargetRingsConfig
 from target_scorer.data.autolabel import render_review_card
 from target_scorer.data.schema import AnnotatedShot, TargetAnnotation
+from target_scorer.geometry.canonical_loader import canonicalize_image
+from target_scorer.geometry.rectifier import TargetRectifier
 from target_scorer.metrology.scoring import GroupMetrics, ShotResult, score_target_group
+
+
+IMAGE_EXTENSIONS: Set[str] = {
+    ".heic", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".dng", ".webp", ".bmp"
+}
+
+
+@dataclass
+class TargetEntry:
+    """Represents either an existing labeled TargetAnnotation JSON or an unlabeled target image."""
+    target_id: str
+    json_path: Optional[Path] = None
+    image_path: Optional[Path] = None
+    canonical_path: Optional[Path] = None
+    is_labeled: bool = False
 
 
 class EagleEyeLoupe(tk.Toplevel):
@@ -397,10 +416,96 @@ class EagleEyeLoupe(tk.Toplevel):
         )
 
 
+class AutoLabelSettingsDialog(tk.Toplevel):
+    """Modal configuration dialog for in-editor model-assisted auto-labeling."""
+
+    def __init__(self, parent: "AnnotationEditor"):
+        super().__init__(parent)
+        self.parent_editor = parent
+        self.title("Auto-Label Model & Metrology Settings")
+        self.geometry("540x290")
+        self.resizable(False, False)
+        self.transient(parent)
+        self.grab_set()
+
+        bg = "#1c1c1c" if parent.current_theme == "dark" else "#fafafa"
+        self.configure(bg=bg)
+
+        self._ckpt_var = tk.StringVar(value=parent.autolabel_checkpoint_var.get())
+        self._thresh_var = tk.StringVar(value=f"{parent.autolabel_threshold_var.get():.2f}")
+        self._shots_var = tk.StringVar(value=str(parent.autolabel_max_shots_var.get()))
+        self._redact_var = tk.BooleanVar(value=parent.autolabel_redact_pii_var.get())
+
+        frame = ttk.Frame(self, padding=16)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(frame, text="AUTO-LABEL SETTINGS", style="Header.TLabel").grid(
+            row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 12)
+        )
+
+        ttk.Label(frame, text="Checkpoint (.pt):").grid(row=1, column=0, sticky=tk.W, pady=6)
+        ttk.Entry(frame, textvariable=self._ckpt_var, width=42).grid(row=1, column=1, sticky=tk.EW, padx=8, pady=6)
+        ttk.Button(frame, text="Browse...", command=self._on_browse_ckpt).grid(row=1, column=2, pady=6)
+
+        ttk.Label(frame, text="Peak Threshold (0.05–0.95):").grid(row=2, column=0, sticky=tk.W, pady=6)
+        ttk.Spinbox(
+            frame, from_=0.05, to=0.95, increment=0.05, textvariable=self._thresh_var, width=10
+        ).grid(row=2, column=1, sticky=tk.W, padx=8, pady=6)
+
+        ttk.Label(frame, text="Max Shots per Target:").grid(row=3, column=0, sticky=tk.W, pady=6)
+        ttk.Spinbox(
+            frame, from_=1, to=50, increment=1, textvariable=self._shots_var, width=10
+        ).grid(row=3, column=1, sticky=tk.W, padx=8, pady=6)
+
+        cb_style = "Switch.TCheckbutton" if parent.has_sv_ttk else "TCheckbutton"
+        ttk.Checkbutton(
+            frame,
+            text="Redact Competitor Margin PII (Name, NRA#)",
+            variable=self._redact_var,
+            style=cb_style,
+        ).grid(row=4, column=0, columnspan=3, sticky=tk.W, pady=10)
+
+        btn_row = ttk.Frame(frame)
+        btn_row.grid(row=5, column=0, columnspan=3, sticky=tk.E, pady=(12, 0))
+        ttk.Button(btn_row, text="Cancel", command=self.destroy).pack(side=tk.RIGHT, padx=(6, 0))
+        ttk.Button(btn_row, text="Apply", style="Accent.TButton", command=self._on_apply).pack(side=tk.RIGHT)
+
+        frame.columnconfigure(1, weight=1)
+
+    def _on_browse_ckpt(self):
+        selected = filedialog.askopenfilename(
+            title="Select Model Weights Checkpoint",
+            initialdir=os.path.dirname(self._ckpt_var.get()) or os.getcwd(),
+            filetypes=[("PyTorch Checkpoints", "*.pt *.pth"), ("All Files", "*.*")],
+            parent=self,
+        )
+        if selected:
+            self._ckpt_var.set(selected)
+
+    def _on_apply(self):
+        try:
+            thresh = float(self._thresh_var.get())
+            if not (0.01 <= thresh <= 0.99):
+                raise ValueError("Peak threshold must be between 0.01 and 0.99.")
+            max_shots = int(self._shots_var.get())
+            if max_shots < 1:
+                raise ValueError("Max shots must be >= 1.")
+        except ValueError as exc:
+            messagebox.showerror("Invalid Settings", str(exc), parent=self)
+            return
+
+        self.parent_editor.autolabel_checkpoint_var.set(self._ckpt_var.get().strip())
+        self.parent_editor.autolabel_threshold_var.set(thresh)
+        self.parent_editor.autolabel_max_shots_var.set(max_shots)
+        self.parent_editor.autolabel_redact_pii_var.set(bool(self._redact_var.get()))
+        self.destroy()
+
+
 class AnnotationEditor(tk.Tk):
     """
-    High-performance interactive desktop GUI for reviewing, adding, moving, and deleting
-    bullet hole markers on autolabeled target cards, with real-time NRA metrology re-scoring.
+    High-performance interactive desktop GUI for reviewing, auto-labeling, adding, moving,
+    and deleting bullet hole markers on target images and annotation cards, with real-time
+    NRA metrology re-scoring.
     """
 
     def __init__(
@@ -408,6 +513,8 @@ class AnnotationEditor(tk.Tk):
         target_dir_or_file: Optional[Union[str, Path]] = None,
         target_type_override: Optional[str] = None,
         copy_to_dir: Optional[Union[str, Path]] = None,
+        checkpoint_path: Optional[str] = "weights/target_scoring_hrnet_1024_best.pt",
+        peak_threshold: float = 0.40,
     ):
         super().__init__()
 
@@ -437,21 +544,26 @@ class AnnotationEditor(tk.Tk):
         # State
         self.target_type_override = target_type_override
         self.copy_to_dir_init = Path(copy_to_dir) if copy_to_dir else None
+        self.target_entries: List[TargetEntry] = []
+        self.filtered_indices: List[int] = []
         self.json_files: List[Path] = []
         self.current_idx: int = -1
+        self.current_entry: Optional[TargetEntry] = None
         self.current_json_path: Optional[Path] = None
         self.current_ann: Optional[TargetAnnotation] = None
+        self.root_dir: Optional[Path] = None
 
         self.canonical_cv2: Optional[np.ndarray] = None
         self.canonical_pil: Optional[Image.Image] = None
         self.photo_img: Optional[ImageTk.PhotoImage] = None
+        self.is_rectified: bool = True
 
         # Editable target state
         self.shots: List[Dict[str, Any]] = []
         self.bullseye: Tuple[float, float] = (512.0, 512.0)
         self.canvas_size: int = 1024
         self.pixels_per_mm: float = 4.0
-        self.target_type: str = "B-3"
+        self.target_type: str = (target_type_override or "B-3").upper()
         self.caliber_mm: float = 5.69
         self.group_metrics: Optional[GroupMetrics] = None
 
@@ -468,9 +580,23 @@ class AnnotationEditor(tk.Tk):
         self.drag_start_screen: Tuple[int, int] = (0, 0)
         self.drag_start_item_pos: Tuple[float, float] = (0.0, 0.0)
         self.is_modified: bool = False
-        self.undo_stack: List[List[Dict[str, Any]]] = []
+        self.undo_stack: List[Dict[str, Any]] = []
         self.eagle_eye_dialog: Optional[EagleEyeLoupe] = None
         self._suppress_tree_events: bool = False
+
+        # Auto-label pipeline state
+        self.autolabel_checkpoint_var = tk.StringVar(
+            value=checkpoint_path if checkpoint_path is not None else "weights/target_scoring_hrnet_1024_best.pt"
+        )
+        self.autolabel_threshold_var = tk.DoubleVar(value=float(peak_threshold))
+        self.autolabel_max_shots_var = tk.IntVar(value=10)
+        self.autolabel_redact_pii_var = tk.BooleanVar(value=False)
+        self.target_type_var = tk.StringVar(value=self.target_type)
+        self.filter_var = tk.StringVar(value="All")
+        self._autolabel_pipeline: Optional[Any] = None
+        self._batch_running: bool = False
+        self._batch_cancel_event = threading.Event()
+        self._batch_thread: Optional[threading.Thread] = None
 
         # Modes & Display Toggles
         self.edit_mode_var = tk.StringVar(value="shot")
@@ -623,6 +749,8 @@ class AnnotationEditor(tk.Tk):
             self.lbl_hint.config(foreground=hint_fg)
         if hasattr(self, "lbl_scale_info"):
             self.lbl_scale_info.config(foreground=sub_fg)
+        if hasattr(self, "lbl_batch_progress"):
+            self.lbl_batch_progress.config(foreground=header_fg)
 
         # Update Eagle Eye Loupe if currently open
         if getattr(self, "eagle_eye_dialog", None) and self.eagle_eye_dialog.winfo_exists():
@@ -633,8 +761,11 @@ class AnnotationEditor(tk.Tk):
         top_bar = ttk.Frame(self, padding=(10, 8))
         top_bar.pack(side=tk.TOP, fill=tk.X)
 
-        btn_open = ttk.Button(top_bar, text="📁 Open Directory...", style="Accent.TButton", command=self.on_open_directory)
-        btn_open.pack(side=tk.LEFT, padx=(0, 10))
+        btn_open = ttk.Button(top_bar, text="📁 Open Dir...", style="Accent.TButton", command=self.on_open_directory)
+        btn_open.pack(side=tk.LEFT, padx=(0, 4))
+
+        btn_open_img = ttk.Button(top_bar, text="🖼️ Open File...", command=self.on_open_image)
+        btn_open_img.pack(side=tk.LEFT, padx=(0, 8))
 
         btn_prev = ttk.Button(top_bar, text="◀ Prev (P)", command=self.on_prev_target)
         btn_prev.pack(side=tk.LEFT, padx=2)
@@ -685,6 +816,69 @@ class AnnotationEditor(tk.Tk):
 
         btn_clear = ttk.Button(top_bar, text="✕ Clear Shots", style="Danger.TButton", command=self.on_clear_shots)
         btn_clear.pack(side=tk.RIGHT, padx=4)
+
+        # 1a. Auto-Label & Filter Bar
+        autolabel_bar = ttk.Frame(self, padding=(10, 4))
+        autolabel_bar.pack(side=tk.TOP, fill=tk.X)
+
+        ttk.Label(autolabel_bar, text="Filter:").pack(side=tk.LEFT, padx=(0, 4))
+        self.filter_combo = ttk.Combobox(
+            autolabel_bar,
+            textvariable=self.filter_var,
+            values=["All", "Unlabeled", "Labeled"],
+            state="readonly",
+            width=11
+        )
+        self.filter_combo.bind("<<ComboboxSelected>>", self.on_filter_changed)
+        self.filter_combo.pack(side=tk.LEFT, padx=(0, 8))
+
+        self.lbl_counts = ttk.Label(autolabel_bar, text="0 targets", foreground="#a0a4b0")
+        self.lbl_counts.pack(side=tk.LEFT, padx=(0, 10))
+
+        ttk.Separator(autolabel_bar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=6)
+
+        ttk.Label(autolabel_bar, text="Target Type:").pack(side=tk.LEFT, padx=(6, 4))
+        self.target_type_combo = ttk.Combobox(
+            autolabel_bar,
+            textvariable=self.target_type_var,
+            values=["B-2", "B-3"],
+            state="readonly",
+            width=6
+        )
+        self.target_type_combo.bind("<<ComboboxSelected>>", self.on_target_type_changed)
+        self.target_type_combo.pack(side=tk.LEFT, padx=(0, 10))
+
+        self.btn_autolabel = ttk.Button(
+            autolabel_bar,
+            text="✨ Auto-Label (A)",
+            style="Accent.TButton",
+            command=self.on_autolabel_current
+        )
+        self.btn_autolabel.pack(side=tk.LEFT, padx=3)
+
+        self.btn_rectify_manual = ttk.Button(
+            autolabel_bar,
+            text="📐 Rectify (Manual)",
+            command=self.on_rectify_manual
+        )
+        self.btn_rectify_manual.pack(side=tk.LEFT, padx=3)
+
+        self.btn_batch_autolabel = ttk.Button(
+            autolabel_bar,
+            text="⚡ Auto-Label All Unlabeled",
+            command=self.on_autolabel_all_unlabeled
+        )
+        self.btn_batch_autolabel.pack(side=tk.LEFT, padx=3)
+
+        self.btn_autolabel_settings = ttk.Button(
+            autolabel_bar,
+            text="⚙ Auto-Label Settings...",
+            command=self.on_open_autolabel_settings
+        )
+        self.btn_autolabel_settings.pack(side=tk.LEFT, padx=3)
+
+        self.lbl_batch_progress = ttk.Label(autolabel_bar, text="", foreground="#57c8ff", font=("Segoe UI", 9, "bold"))
+        self.lbl_batch_progress.pack(side=tk.LEFT, padx=10)
 
         # 1b. Export / Copy on Save Bar
         export_bar = ttk.Frame(self, padding=(10, 4))
@@ -789,6 +983,8 @@ class AnnotationEditor(tk.Tk):
         self.lbl_target_type.pack(anchor=tk.W, pady=(4, 2))
         self.lbl_scale_info = ttk.Label(spec_card, text="Scale: 4.00 px/mm | Canvas: 1024x1024", foreground="#a0a4b0")
         self.lbl_scale_info.pack(anchor=tk.W)
+        self.lbl_entry_status = ttk.Label(spec_card, text="Status: Ready", font=("Segoe UI", 9, "bold"), foreground="#a0a4b0")
+        self.lbl_entry_status.pack(anchor=tk.W, pady=(4, 0))
 
         # Scorecard Summary Card
         score_card = ttk.Frame(hud_frame, style="Card.TFrame", padding=12)
@@ -870,7 +1066,7 @@ class AnnotationEditor(tk.Tk):
         status_fg = "#57c8ff" if self.current_theme == "dark" else "#005fb8"
         self.lbl_status_msg = ttk.Label(
             status_bar,
-            text="Ready. Click canvas to add shots | Drag to move | Press 'E' for Eagle Eye Loupe | Ctrl+T toggles theme",
+            text="Ready. Click canvas to add shots | Drag to move | Press 'A' to Auto-Label | 'E' for Eagle Eye",
             foreground=status_fg
         )
         self.lbl_status_msg.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
@@ -878,22 +1074,33 @@ class AnnotationEditor(tk.Tk):
         self.lbl_save_status = ttk.Label(status_bar, text="", font=("Segoe UI", 9, "bold"), foreground="#00ff78")
         self.lbl_save_status.pack(side=tk.RIGHT)
 
+    def _shortcut_safe(self, fn):
+        """Executes shortcut callback only when keyboard focus is not inside a text input widget."""
+        def _handler(event):
+            widget = event.widget if event else None
+            if isinstance(widget, (tk.Entry, ttk.Entry, ttk.Spinbox)):
+                return
+            fn()
+        return _handler
+
     def _bind_shortcuts(self):
         self.bind("<Control-s>", lambda e: self.on_save())
         self.bind("<Control-z>", lambda e: self.on_undo())
         self.bind("<Control-t>", lambda e: self.toggle_theme())
         self.bind("<Control-T>", lambda e: self.toggle_theme())
         self.bind("<F10>", lambda e: self.toggle_theme())
-        self.bind("<Delete>", lambda e: self.on_delete_selected())
-        self.bind("<BackSpace>", lambda e: self.on_delete_selected())
-        self.bind("e", lambda e: self.on_open_eagle_eye())
-        self.bind("E", lambda e: self.on_open_eagle_eye())
-        self.bind("n", lambda e: self.on_next_target())
-        self.bind("N", lambda e: self.on_next_target())
-        self.bind("p", lambda e: self.on_prev_target())
-        self.bind("P", lambda e: self.on_prev_target())
-        self.bind("f", lambda e: self.on_fit_window())
-        self.bind("F", lambda e: self.on_fit_window())
+        self.bind("<Delete>", self._shortcut_safe(self.on_delete_selected))
+        self.bind("<BackSpace>", self._shortcut_safe(self.on_delete_selected))
+        self.bind("a", self._shortcut_safe(self.on_autolabel_current))
+        self.bind("A", self._shortcut_safe(self.on_autolabel_current))
+        self.bind("e", self._shortcut_safe(self.on_open_eagle_eye))
+        self.bind("E", self._shortcut_safe(self.on_open_eagle_eye))
+        self.bind("n", self._shortcut_safe(self.on_next_target))
+        self.bind("N", self._shortcut_safe(self.on_next_target))
+        self.bind("p", self._shortcut_safe(self.on_prev_target))
+        self.bind("P", self._shortcut_safe(self.on_prev_target))
+        self.bind("f", self._shortcut_safe(self.on_fit_window))
+        self.bind("F", self._shortcut_safe(self.on_fit_window))
 
         # Fine-grained arrow key coordinate nudging
         self.bind("<Up>", lambda e: self.nudge_selected_shot(0, -1))
@@ -906,68 +1113,227 @@ class AnnotationEditor(tk.Tk):
         self.bind("<Shift-Right>", lambda e: self.nudge_selected_shot(5, 0))
 
     # =========================================================================
-    # File Loading & Directory Navigation
+    # File Loading, Unlabeled Discovery & Directory Navigation
     # =========================================================================
+
+    @staticmethod
+    def _normalize_image_stem(stem: str) -> str:
+        for suffix in ("_canonical", "_raw_photo", "_raw", "_review"):
+            if stem.endswith(suffix):
+                return stem[: -len(suffix)]
+        return stem
+
+    def _refresh_json_files(self):
+        self.json_files = [e.json_path for e in self.target_entries if e.json_path is not None]
+
+    def _update_entry_counts_label(self):
+        total = len(self.target_entries)
+        labeled = sum(1 for e in self.target_entries if e.is_labeled)
+        unlabeled = total - labeled
+        if hasattr(self, "lbl_counts"):
+            self.lbl_counts.config(text=f"{total} targets ({labeled} labeled, {unlabeled} unlabeled)")
+
+    def _apply_filter(self, preserve_entry: Optional[TargetEntry] = None):
+        mode = self.filter_var.get() if hasattr(self, "filter_var") else "All"
+        self.filtered_indices = []
+        for idx, entry in enumerate(self.target_entries):
+            if mode == "Unlabeled" and entry.is_labeled:
+                continue
+            if mode == "Labeled" and not entry.is_labeled:
+                continue
+            self.filtered_indices.append(idx)
+
+        self._update_entry_counts_label()
+
+        if not self.filtered_indices:
+            self.current_idx = -1
+            self.current_entry = None
+            self.lbl_target_info.config(text=f"No {mode.lower()} targets found.")
+            return
+
+        target_pos = 0
+        if preserve_entry is not None:
+            for pos, orig_idx in enumerate(self.filtered_indices):
+                if self.target_entries[orig_idx] is preserve_entry:
+                    target_pos = pos
+                    break
+        self.load_target_index(target_pos)
+
+    def on_filter_changed(self, event=None):
+        self._apply_filter(preserve_entry=self.current_entry)
+
+    def _find_matching_json_for_image(self, img_path: Path) -> Optional[Path]:
+        base = self._normalize_image_stem(img_path.stem)
+        candidates = [
+            img_path.with_suffix(".json"),
+            img_path.parent / f"{base}.json",
+            img_path.parent.parent / f"{base}.json",
+            img_path.parent.parent / "annotations" / f"{base}.json",
+        ]
+        for cand in candidates:
+            if cand.exists() and cand.is_file():
+                return cand.resolve()
+        return None
 
     def load_path(self, path: Union[str, Path]):
         p = Path(path).resolve()
+        entries: List[TargetEntry] = []
+
         if p.is_file():
+            self.root_dir = p.parent
             if p.suffix.lower() == ".json":
-                self.json_files = [p]
-                self.current_idx = 0
-            else:
-                json_cand = p.with_suffix(".json")
-                if json_cand.exists():
-                    self.json_files = [json_cand]
-                    self.current_idx = 0
+                entries.append(TargetEntry(target_id=p.stem, json_path=p, is_labeled=True))
+            elif p.suffix.lower() in IMAGE_EXTENSIONS:
+                matched_json = self._find_matching_json_for_image(p)
+                if matched_json is not None:
+                    entries.append(TargetEntry(target_id=matched_json.stem, json_path=matched_json, is_labeled=True))
+                else:
+                    base_id = self._normalize_image_stem(p.stem)
+                    is_canon = p.stem.endswith("_canonical")
+                    entries.append(TargetEntry(
+                        target_id=base_id,
+                        image_path=None if is_canon else p,
+                        canonical_path=p if is_canon else None,
+                        is_labeled=False,
+                    ))
         elif p.is_dir():
-            # Recursively find all JSON files that match target annotation schema
+            self.root_dir = p
+            claimed_paths: Set[Path] = set()
+            labeled_ids: Set[str] = set()
+
+            # 1. Discover valid annotation JSONs
             cand_files = sorted(list(p.rglob("*.json")))
-            valid_files = []
             for f in cand_files:
                 if f.name == "manifest.json":
                     continue
                 try:
                     with open(f, "r", encoding="utf-8") as jf:
                         d = json.load(jf)
-                    if "target_type" in d or "bullseye_center" in d or "shots" in d:
-                        valid_files.append(f)
+                    if not ("target_type" in d or "bullseye_center" in d or "shots" in d):
+                        continue
+                    ann = TargetAnnotation.from_dict(d)
                 except Exception:
                     continue
-            self.json_files = valid_files
-            self.current_idx = 0 if self.json_files else -1
 
-        if self.json_files:
-            self.load_target_index(self.current_idx)
+                canon_p = self._resolve_canonical_image_path(f, ann)
+                raw_p = self._resolve_raw_image_path(f, ann)
+                if canon_p is not None:
+                    claimed_paths.add(canon_p.resolve())
+                if raw_p is not None:
+                    claimed_paths.add(raw_p.resolve())
+                labeled_ids.add(self._normalize_image_stem(ann.target_id or f.stem))
+                labeled_ids.add(self._normalize_image_stem(f.stem))
+
+                entries.append(TargetEntry(
+                    target_id=ann.target_id or f.stem,
+                    json_path=f,
+                    image_path=raw_p,
+                    canonical_path=canon_p,
+                    is_labeled=True,
+                ))
+
+            # 2. Discover remaining unlabeled target images (excluding *_review cards and paired assets)
+            unlabeled_by_id: Dict[str, TargetEntry] = {}
+            all_files = sorted(f for f in p.rglob("*") if f.is_file())
+            for f in all_files:
+                if f.suffix.lower() not in IMAGE_EXTENSIONS:
+                    continue
+                if f.stem.endswith("_review"):
+                    continue
+                resolved = f.resolve()
+                if resolved in claimed_paths:
+                    continue
+                base_id = self._normalize_image_stem(f.stem)
+                if base_id in labeled_ids:
+                    continue
+
+                existing = unlabeled_by_id.get(base_id)
+                is_canon = f.stem.endswith("_canonical") or "canonical" in f.parent.name.lower()
+                if existing is None:
+                    unlabeled_by_id[base_id] = TargetEntry(
+                        target_id=base_id,
+                        image_path=None if is_canon else f,
+                        canonical_path=f if is_canon else None,
+                        is_labeled=False,
+                    )
+                else:
+                    if is_canon and existing.canonical_path is None:
+                        existing.canonical_path = f
+                    elif not is_canon and existing.image_path is None:
+                        existing.image_path = f
+
+            entries.extend(unlabeled_by_id.values())
+
+        self.target_entries = entries
+        self._refresh_json_files()
+        if self.target_entries:
+            self._apply_filter()
         else:
-            self.lbl_target_info.config(text="No target JSON files found.")
+            self.filtered_indices = []
+            self.current_idx = -1
+            self.current_entry = None
+            self._update_entry_counts_label()
+            self.lbl_target_info.config(text="No target JSON or image files found.")
 
     def on_open_directory(self):
         dir_selected = filedialog.askdirectory(title="Select Target Directory", initialdir=os.getcwd())
         if dir_selected:
             self.load_path(dir_selected)
 
+    def on_open_image(self):
+        file_selected = filedialog.askopenfilename(
+            title="Open Target Image or Annotation JSON",
+            initialdir=str(self.root_dir or os.getcwd()),
+            filetypes=[
+                ("Targets & Annotations", "*.json *.jpg *.jpeg *.png *.heic *.tif *.tiff *.dng *.webp *.bmp"),
+                ("Images", "*.jpg *.jpeg *.png *.heic *.tif *.tiff *.dng *.webp *.bmp"),
+                ("JSON Annotations", "*.json"),
+                ("All Files", "*.*"),
+            ],
+        )
+        if file_selected:
+            self.load_path(file_selected)
+
     def load_target_index(self, idx: int):
-        if not (0 <= idx < len(self.json_files)):
+        # Allow direct index against filtered_indices (or fallback to target_entries if empty filter)
+        if self.filtered_indices:
+            if not (0 <= idx < len(self.filtered_indices)):
+                return
+            entry = self.target_entries[self.filtered_indices[idx]]
+            total_shown = len(self.filtered_indices)
+        elif self.json_files and 0 <= idx < len(self.json_files):
+            json_p = self.json_files[idx]
+            entry = TargetEntry(target_id=json_p.stem, json_path=json_p, is_labeled=True)
+            total_shown = len(self.json_files)
+        else:
             return
 
         self.current_idx = idx
-        self.current_json_path = self.json_files[idx]
-        self.lbl_target_info.config(text=f"{self.current_json_path.name} [{idx + 1} / {len(self.json_files)}]")
+        self.current_entry = entry
 
-        # Load JSON annotation
+        if entry.is_labeled and entry.json_path is not None:
+            self._load_labeled_entry(entry, idx, total_shown)
+        else:
+            self._load_unlabeled_entry(entry, idx, total_shown)
+
+    def _load_labeled_entry(self, entry: TargetEntry, idx: int, total_shown: int):
+        self.current_json_path = entry.json_path
+        self.lbl_target_info.config(text=f"{entry.json_path.name} [{idx + 1} / {total_shown}]")
+
         try:
-            self.current_ann = TargetAnnotation.from_json(self.current_json_path)
+            self.current_ann = TargetAnnotation.from_json(entry.json_path)
         except Exception as e:
-            messagebox.showerror("Error Loading JSON", f"Failed to parse '{self.current_json_path.name}':\n{e}")
+            messagebox.showerror("Error Loading JSON", f"Failed to parse '{entry.json_path.name}':\n{e}")
             return
 
-        self.target_type = self.target_type_override or self.current_ann.target_type
+        self.target_type = (self.target_type_override or self.current_ann.target_type or "B-2").upper()
+        if hasattr(self, "target_type_var"):
+            self.target_type_var.set(self.target_type)
         self.canvas_size = self.current_ann.canvas_size
         self.pixels_per_mm = self.current_ann.pixels_per_mm
         self.bullseye = tuple(self.current_ann.bullseye_center)
+        self.is_rectified = True
 
-        # Load shots into mutable state
         self.shots = []
         for s in self.current_ann.shots:
             self.shots.append({
@@ -984,15 +1350,13 @@ class AnnotationEditor(tk.Tk):
             self.caliber_mm = self.shots[0]["caliber_mm"]
             self._update_caliber_combobox()
 
-        # Locate corresponding canonical image
-        img_path = self._resolve_canonical_image_path(self.current_json_path, self.current_ann)
+        img_path = self._resolve_canonical_image_path(entry.json_path, self.current_ann)
         if img_path and img_path.exists():
+            entry.canonical_path = img_path
             self.canonical_cv2 = cv2.imread(str(img_path))
-            # Convert BGR to RGB for PIL
             rgb = cv2.cvtColor(self.canonical_cv2, cv2.COLOR_BGR2RGB)
             self.canonical_pil = Image.fromarray(rgb)
         else:
-            # Fallback placeholder canvas
             self.canonical_cv2 = np.full((self.canvas_size, self.canvas_size, 3), 220, dtype=np.uint8)
             self.canonical_pil = Image.fromarray(self.canonical_cv2)
 
@@ -1000,8 +1364,8 @@ class AnnotationEditor(tk.Tk):
         self.selected_shot_idx = None
         self.is_modified = False
         self.lbl_save_status.config(text="")
+        self._update_entry_status_badge()
 
-        # Recalculate metrology and fit to window
         self.recalculate_scores()
         self.on_fit_window()
 
@@ -1010,6 +1374,62 @@ class AnnotationEditor(tk.Tk):
                 self.eagle_eye_dialog.set_shot_index(0)
             else:
                 self.close_eagle_eye()
+
+    def _load_unlabeled_entry(self, entry: TargetEntry, idx: int, total_shown: int):
+        src_path = entry.image_path or entry.canonical_path
+        src_name = src_path.name if src_path else entry.target_id
+        self.current_json_path = None
+        self.current_ann = None
+        self.lbl_target_info.config(text=f"{src_name} [UNLABELED • {idx + 1} / {total_shown}]")
+
+        self.target_type = (self.target_type_override or self.target_type_var.get() or "B-2").upper()
+        self.target_type_var.set(self.target_type)
+        self.canvas_size = 1024
+        self.pixels_per_mm = 4.0
+        self.bullseye = (512.0, 512.0)
+        self.shots = []
+
+        # Show raw image initially per user preference; canonicalize EXIF/color for crisp display
+        if src_path and src_path.exists():
+            try:
+                bgr = canonicalize_image(src_path)
+            except Exception:
+                bgr = cv2.imread(str(src_path))
+                if bgr is None:
+                    bgr = np.full((self.canvas_size, self.canvas_size, 3), 220, dtype=np.uint8)
+            self.canonical_cv2 = bgr
+            rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+            self.canonical_pil = Image.fromarray(rgb)
+        else:
+            self.canonical_cv2 = np.full((self.canvas_size, self.canvas_size, 3), 220, dtype=np.uint8)
+            self.canonical_pil = Image.fromarray(self.canonical_cv2)
+
+        # Keep raw preview flag False for unrectified raw images
+        self.is_rectified = (entry.image_path is None and entry.canonical_path is not None)
+        self.undo_stack.clear()
+        self.selected_shot_idx = None
+        self.is_modified = False
+        self.lbl_save_status.config(text="")
+        self._update_entry_status_badge()
+
+        self.close_eagle_eye()
+        self.recalculate_scores()
+        self.on_fit_window()
+        if not self.is_rectified:
+            self.lbl_status_msg.config(
+                text=f"Loaded raw '{src_name}'. Verify Target Type ({self.target_type}) and click 'Auto-Label (A)' or 'Rectify (Manual)'."
+            )
+
+    def _update_entry_status_badge(self):
+        """Synchronizes the sidebar status badge with the current entry's labeled/rectified state."""
+        if not hasattr(self, "lbl_entry_status"):
+            return
+        if self.current_entry is not None and self.current_entry.is_labeled:
+            status_fg = "#00ff78" if self.current_theme == "dark" else "#0b8043"
+            self.lbl_entry_status.config(text="Status: LABELED ✓", foreground=status_fg)
+        else:
+            label_txt = "Status: UNLABELED (Raw Preview)" if not self.is_rectified else "Status: UNLABELED (Canonical)"
+            self.lbl_entry_status.config(text=label_txt, foreground="#ff9100")
 
     def _resolve_canonical_image_path(self, json_p: Path, ann: TargetAnnotation) -> Optional[Path]:
         json_dir = json_p.parent
@@ -1110,13 +1530,364 @@ class AnnotationEditor(tk.Tk):
         self.recalculate_scores()
         self.redraw_canvas()
 
+    def on_target_type_changed(self, event=None):
+        new_type = self.target_type_var.get().upper()
+        if new_type in ("B-2", "B-3"):
+            self.target_type = new_type
+            if self.is_rectified:
+                self.recalculate_scores()
+                self.redraw_canvas()
+            else:
+                self._update_hud_display()
+
     def on_prev_target(self):
-        if self.json_files and self.current_idx > 0:
+        if self.filtered_indices and self.current_idx > 0:
+            self.load_target_index(self.current_idx - 1)
+        elif not self.filtered_indices and self.json_files and self.current_idx > 0:
             self.load_target_index(self.current_idx - 1)
 
     def on_next_target(self):
-        if self.json_files and self.current_idx < len(self.json_files) - 1:
+        total = len(self.filtered_indices) if self.filtered_indices else len(self.json_files)
+        if total > 0 and self.current_idx < total - 1:
             self.load_target_index(self.current_idx + 1)
+
+    # =========================================================================
+    # In-Editor Auto-Labeling & Rectification
+    # =========================================================================
+
+    def _get_autolabel_pipeline(self):
+        from target_scorer.data.autolabel import AutoLabelPipeline
+        ckpt_str = self.autolabel_checkpoint_var.get().strip() or None
+        if self._autolabel_pipeline is None or self._autolabel_pipeline.loaded_checkpoint != ckpt_str:
+            self._autolabel_pipeline = AutoLabelPipeline(checkpoint_path=ckpt_str)
+        return self._autolabel_pipeline
+
+    def _get_current_image_source(self) -> Union[Path, np.ndarray, None]:
+        if self.current_entry is not None:
+            if self.current_entry.image_path and self.current_entry.image_path.exists():
+                return self.current_entry.image_path
+            if self.current_entry.canonical_path and self.current_entry.canonical_path.exists():
+                return self.current_entry.canonical_path
+        return self.canonical_cv2
+
+    def on_autolabel_current(self):
+        """Runs model-assisted auto-labeling on the currently open target in memory."""
+        if self.current_entry is None and self.canonical_cv2 is None:
+            messagebox.showinfo("Auto-Label", "Open an image or directory first.")
+            return
+
+        src = self._get_current_image_source()
+        if src is None:
+            messagebox.showerror("Auto-Label", "No source image available for the current target.")
+            return
+
+        t_type = (self.target_type_var.get() or self.target_type or "B-2").upper()
+        thresh = float(self.autolabel_threshold_var.get())
+        max_shots = int(self.autolabel_max_shots_var.get())
+        redact_pii = bool(self.autolabel_redact_pii_var.get())
+        target_id = self.current_entry.target_id if self.current_entry else "target"
+
+        self.lbl_status_msg.config(text=f"Running Auto-Label ({t_type}, thresh={thresh:.2f}) on '{target_id}'...")
+        self.update_idletasks()
+
+        try:
+            pipeline = self._get_autolabel_pipeline()
+            ann, canon_bgr = pipeline.predict(
+                image_source=src,
+                target_type=t_type,
+                canvas_size=1024,
+                pixels_per_mm=4.0,
+                peak_threshold=thresh,
+                max_shots=max_shots,
+                bullet_diameter_mm=self.caliber_mm,
+                target_id=target_id,
+                redact_pii=redact_pii,
+            )
+        except FileNotFoundError as exc:
+            messagebox.showwarning(
+                "Checkpoint Not Found",
+                f"{exc}\n\nOpen '⚙ Auto-Label Settings...' to select a valid .pt checkpoint, "
+                "or click '📐 Rectify (Manual)' to place shots manually.",
+                parent=self,
+            )
+            self.lbl_status_msg.config(text="Auto-label aborted: checkpoint not found.")
+            return
+        except Exception as exc:
+            messagebox.showerror("Auto-Label Failed", f"Error during auto-labeling:\n{exc}", parent=self)
+            self.lbl_status_msg.config(text=f"Auto-label failed: {exc}")
+            return
+
+        self.push_undo()
+        self.current_ann = ann
+        self.target_type = t_type
+        self.target_type_var.set(t_type)
+        self.canvas_size = ann.canvas_size
+        self.pixels_per_mm = ann.pixels_per_mm
+        self.bullseye = tuple(ann.bullseye_center)
+        self.is_rectified = True
+
+        self.canonical_cv2 = canon_bgr
+        rgb = cv2.cvtColor(canon_bgr, cv2.COLOR_BGR2RGB)
+        self.canonical_pil = Image.fromarray(rgb)
+
+        self.shots = [
+            {
+                "id": s.id,
+                "x": float(s.center_x),
+                "y": float(s.center_y),
+                "score": s.score,
+                "is_x": s.is_x,
+                "caliber_mm": s.caliber_mm,
+                "confidence": s.confidence,
+            }
+            for s in ann.shots
+        ]
+        self.selected_shot_idx = 0 if self.shots else None
+        self._update_entry_status_badge()
+        self.recalculate_scores()
+        self.on_fit_window()
+
+        self.lbl_status_msg.config(
+            text=f"Auto-labeled {len(self.shots)} shots on '{target_id}'. Inspect markers and press Ctrl+S to save."
+        )
+
+    def on_rectify_manual(self):
+        """Rectifies a raw target photo to the 1024x1024 canonical grid without neural shot detection."""
+        if self.current_entry is None and self.canonical_cv2 is None:
+            messagebox.showinfo("Rectify Target", "Open an image or directory first.")
+            return
+
+        src = self._get_current_image_source()
+        if src is None:
+            return
+
+        t_type = (self.target_type_var.get() or self.target_type or "B-2").upper()
+        try:
+            rectifier = TargetRectifier(target_type=t_type, canonical_dim=1024, pixels_per_mm=4.0)
+            result = rectifier.rectify(src)
+        except Exception as exc:
+            messagebox.showerror("Rectification Failed", f"Could not rectify image:\n{exc}", parent=self)
+            return
+
+        self.push_undo()
+        self.target_type = t_type
+        self.canvas_size = 1024
+        self.pixels_per_mm = 4.0
+        self.bullseye = (512.0, 512.0)
+        self.shots = []
+        self.selected_shot_idx = None
+        self.is_rectified = True
+
+        self.canonical_cv2 = result.canonical_crop
+        rgb = cv2.cvtColor(result.canonical_crop, cv2.COLOR_BGR2RGB)
+        self.canonical_pil = Image.fromarray(rgb)
+
+        target_id = self.current_entry.target_id if self.current_entry else "target"
+        meta: Dict[str, Any] = {"autolabeled": False, "source_tilt": round(result.tilt_angle_deg, 1)}
+        if isinstance(src, Path):
+            meta["source_image"] = str(src.resolve())
+
+        self.current_ann = TargetAnnotation(
+            target_id=target_id,
+            image_filename=f"{target_id}_canonical.png",
+            target_type=t_type,
+            bullseye_center=self.bullseye,
+            shots=[],
+            canvas_size=1024,
+            pixels_per_mm=4.0,
+            metadata=meta,
+        )
+
+        self._update_entry_status_badge()
+        self.recalculate_scores()
+        self.on_fit_window()
+        self.lbl_status_msg.config(
+            text=f"Rectified '{target_id}' ({t_type}). Click canvas to manually label shots, then press Ctrl+S to save."
+        )
+
+    def on_open_autolabel_settings(self):
+        AutoLabelSettingsDialog(self)
+
+    def _derive_output_paths(self, entry: TargetEntry) -> Tuple[Path, Path, Path]:
+        """Determines (json_path, canonical_path, review_path) respecting flat or structured layouts."""
+        if entry.json_path is not None:
+            json_p = entry.json_path
+            if json_p.parent.name == "annotations":
+                canon_dir = json_p.parent.parent / "canonical_1024"
+                canon_p = canon_dir / f"{entry.target_id}_canonical.png"
+                rev_p = json_p.parent / f"{entry.target_id}_review.png"
+                if (canon_dir / f"{entry.target_id}_review.png").exists():
+                    rev_p = canon_dir / f"{entry.target_id}_review.png"
+            else:
+                canon_p = json_p.parent / f"{entry.target_id}_canonical.png"
+                rev_p = json_p.parent / f"{entry.target_id}_review.png"
+            return json_p, canon_p, rev_p
+
+        src_p = entry.image_path or entry.canonical_path or (self.root_dir / f"{entry.target_id}.png" if self.root_dir else Path(f"{entry.target_id}.png"))
+        if src_p.parent.name.lower() in ("raw", "canonical_1024", "images") and (
+            (src_p.parent.parent / "annotations").is_dir() or (src_p.parent.parent / "canonical_1024").is_dir()
+        ):
+            base = src_p.parent.parent
+            return (
+                base / "annotations" / f"{entry.target_id}.json",
+                base / "canonical_1024" / f"{entry.target_id}_canonical.png",
+                base / "canonical_1024" / f"{entry.target_id}_review.png",
+            )
+
+        out_dir = src_p.parent
+        return (
+            out_dir / f"{entry.target_id}.json",
+            out_dir / f"{entry.target_id}_canonical.png",
+            out_dir / f"{entry.target_id}_review.png",
+        )
+
+    def _write_target_bundle_to_disk(
+        self,
+        entry: TargetEntry,
+        ann: TargetAnnotation,
+        canonical_bgr: np.ndarray,
+        redact_pii: bool = False,
+        force_write_canonical: bool = False,
+    ) -> Tuple[Path, Path, Path]:
+        """Persists JSON annotation, canonical PNG, and review card PNG cleanly and updates entry."""
+        json_p, canon_p, rev_p = self._derive_output_paths(entry)
+        json_p.parent.mkdir(parents=True, exist_ok=True)
+        canon_p.parent.mkdir(parents=True, exist_ok=True)
+        rev_p.parent.mkdir(parents=True, exist_ok=True)
+
+        ann.image_filename = canon_p.name
+        if entry.image_path is not None and "source_image" not in ann.metadata:
+            ann.metadata["source_image"] = str(entry.image_path.resolve())
+
+        if force_write_canonical or not canon_p.exists() or entry.canonical_path is None:
+            cv2.imwrite(str(canon_p), canonical_bgr)
+
+        ann.to_json(json_p)
+        render_review_card(
+            canonical_bgr=canonical_bgr,
+            annotation=ann,
+            output_path=rev_p,
+            redact_pii=redact_pii,
+        )
+
+        entry.json_path = json_p
+        entry.canonical_path = canon_p
+        entry.is_labeled = True
+        self._refresh_json_files()
+        return json_p, canon_p, rev_p
+
+    def on_autolabel_all_unlabeled(self):
+        """Runs batch auto-labeling over all unlabeled targets in a background thread."""
+        if self._batch_running:
+            self._batch_cancel_event.set()
+            self.lbl_batch_progress.config(text="Stopping batch...")
+            return
+
+        unlabeled = [e for e in self.target_entries if not e.is_labeled]
+        if not unlabeled:
+            messagebox.showinfo("Batch Auto-Label", "All loaded targets are already labeled.")
+            return
+
+        try:
+            pipeline = self._get_autolabel_pipeline()
+            pipeline.ensure_model_loaded(self.autolabel_checkpoint_var.get().strip() or None)
+        except FileNotFoundError as exc:
+            messagebox.showwarning(
+                "Checkpoint Not Found",
+                f"{exc}\n\nOpen '⚙ Auto-Label Settings...' to select a valid .pt checkpoint.",
+                parent=self,
+            )
+            return
+
+        self._batch_running = True
+        self._batch_cancel_event.clear()
+        self.btn_batch_autolabel.config(text="⏹ Stop Batch")
+        self.lbl_batch_progress.config(text=f"Batch: 0/{len(unlabeled)}...")
+
+        params = {
+            "target_type": (self.target_type_var.get() or "B-2").upper(),
+            "peak_threshold": float(self.autolabel_threshold_var.get()),
+            "max_shots": int(self.autolabel_max_shots_var.get()),
+            "bullet_diameter_mm": float(self.caliber_mm),
+            "redact_pii": bool(self.autolabel_redact_pii_var.get()),
+        }
+
+        self._batch_thread = threading.Thread(
+            target=self._run_batch_autolabel_worker,
+            args=(pipeline, unlabeled, params),
+            daemon=True,
+        )
+        self._batch_thread.start()
+
+    def _run_batch_autolabel_worker(self, pipeline: Any, entries: List[TargetEntry], params: Dict[str, Any]):
+        """Background worker that auto-labels and auto-saves each unlabeled entry immediately."""
+        completed = 0
+        failed = 0
+        total = len(entries)
+
+        for idx, entry in enumerate(entries, 1):
+            if self._batch_cancel_event.is_set():
+                break
+
+            src = entry.image_path or entry.canonical_path
+            if src is None:
+                failed += 1
+                continue
+
+            try:
+                ann, canon_bgr = pipeline.predict(
+                    image_source=src,
+                    target_type=params["target_type"],
+                    canvas_size=1024,
+                    pixels_per_mm=4.0,
+                    peak_threshold=params["peak_threshold"],
+                    max_shots=params["max_shots"],
+                    bullet_diameter_mm=params["bullet_diameter_mm"],
+                    target_id=entry.target_id,
+                    redact_pii=params["redact_pii"],
+                )
+                json_p, canon_p, rev_p = self._derive_output_paths(entry)
+                json_p.parent.mkdir(parents=True, exist_ok=True)
+                canon_p.parent.mkdir(parents=True, exist_ok=True)
+                rev_p.parent.mkdir(parents=True, exist_ok=True)
+                ann.image_filename = canon_p.name
+                if entry.image_path is not None and "source_image" not in ann.metadata:
+                    ann.metadata["source_image"] = str(entry.image_path.resolve())
+                cv2.imwrite(str(canon_p), canon_bgr)
+                ann.to_json(json_p)
+                render_review_card(canonical_bgr=canon_bgr, annotation=ann, output_path=rev_p, redact_pii=params["redact_pii"])
+                completed += 1
+                self.after(0, self._on_batch_item_saved, entry, json_p, canon_p, idx, total)
+            except Exception:
+                failed += 1
+                self.after(0, self._on_batch_item_progress, idx, total)
+
+        cancelled = self._batch_cancel_event.is_set()
+        self.after(0, self._on_batch_finished, completed, failed, total, cancelled)
+
+    def _on_batch_item_saved(self, entry: TargetEntry, json_p: Path, canon_p: Path, idx: int, total: int):
+        entry.json_path = json_p
+        entry.canonical_path = canon_p
+        entry.is_labeled = True
+        self._refresh_json_files()
+        self._update_entry_counts_label()
+        self.lbl_batch_progress.config(text=f"Batch: {idx}/{total} saved")
+        if self.current_entry is entry and not self.is_modified:
+            self.load_target_index(self.current_idx)
+
+    def _on_batch_item_progress(self, idx: int, total: int):
+        self.lbl_batch_progress.config(text=f"Batch: {idx}/{total}...")
+
+    def _on_batch_finished(self, completed: int, failed: int, total: int, cancelled: bool):
+        self._batch_running = False
+        self.btn_batch_autolabel.config(text="⚡ Auto-Label All Unlabeled")
+        state_word = "Stopped" if cancelled else "Done"
+        err_part = f", {failed} failed" if failed else ""
+        self.lbl_batch_progress.config(text=f"Batch {state_word}: {completed}/{total} saved{err_part}")
+        self.lbl_status_msg.config(
+            text=f"Batch auto-labeling {state_word.lower()}: {completed} targets saved to disk{err_part}."
+        )
+        self._apply_filter(preserve_entry=self.current_entry)
 
     # =========================================================================
     # Coordinate Transforms & Canvas Rendering
@@ -1145,10 +1916,12 @@ class AnnotationEditor(tk.Tk):
         if self.canonical_pil is not None:
             iw, ih = self.canonical_pil.size
             self.zoom = min((w_can - 30) / float(iw), (h_can - 30) / float(ih))
+            self.min_zoom = min(0.20, max(0.02, self.zoom * 0.5))
             self.pan_x = iw / 2.0
             self.pan_y = ih / 2.0
         else:
             self.zoom = 0.8
+            self.min_zoom = 0.20
             self.pan_x = self.canvas_size / 2.0
             self.pan_y = self.canvas_size / 2.0
         self.redraw_canvas()
@@ -1220,6 +1993,25 @@ class AnnotationEditor(tk.Tk):
 
                     dest_scr_x, dest_scr_y = self.img_to_screen(crop_box[0], crop_box[1])
                     self.canvas.create_image(dest_scr_x, dest_scr_y, image=self.photo_img, anchor=tk.NW)
+
+        if not self.is_rectified:
+            # Show clean banner for raw unrectified preview; skip NRA ring & shot overlays
+            self.canvas.create_rectangle(14, 14, 340, 62, fill="#101824", outline="#ffb300", width=1)
+            self.canvas.create_text(
+                26, 28,
+                text="UNLABELED RAW TARGET",
+                fill="#ffb300",
+                font=("Segoe UI", 10, "bold"),
+                anchor=tk.W,
+            )
+            self.canvas.create_text(
+                26, 48,
+                text="Verify Target Type, then click Auto-Label (A) or Rectify",
+                fill="#cbd5e1",
+                font=("Segoe UI", 8),
+                anchor=tk.W,
+            )
+            return
 
         # 2. Draw NRA Ring Guide Contours (Optional)
         bx_scr, by_scr = self.img_to_screen(self.bullseye[0], self.bullseye[1])
@@ -1347,7 +2139,10 @@ class AnnotationEditor(tk.Tk):
         self.lbl_scale_info.config(text=f"Scale: {self.pixels_per_mm:.2f} px/mm | Canvas: {self.canvas_size}x{self.canvas_size}")
 
         max_score = len(self.shots) * 10
-        score_text = f"SCORE: {m.total_score} / {max_score}"
+        if not self.is_rectified:
+            score_text = "SCORE: -- (Unlabeled Raw)"
+        else:
+            score_text = f"SCORE: {m.total_score} / {max_score}"
         self.lbl_total_score.config(text=score_text)
 
         stats_text = f"Shots: {m.total_shots} | X-Count: {m.x_count}"
@@ -1399,8 +2194,16 @@ class AnnotationEditor(tk.Tk):
     # =========================================================================
 
     def push_undo(self):
-        state_copy = copy.deepcopy(self.shots)
-        self.undo_stack.append(state_copy)
+        snapshot = {
+            "shots": copy.deepcopy(self.shots),
+            "bullseye": self.bullseye,
+            "is_rectified": self.is_rectified,
+            "target_type": self.target_type,
+            "canonical_cv2": None if self.canonical_cv2 is None else self.canonical_cv2.copy(),
+            "canonical_pil": None if self.canonical_pil is None else self.canonical_pil.copy(),
+            "current_ann": copy.deepcopy(self.current_ann),
+        }
+        self.undo_stack.append(snapshot)
         if len(self.undo_stack) > 30:
             self.undo_stack.pop(0)
         self.is_modified = True
@@ -1408,13 +2211,35 @@ class AnnotationEditor(tk.Tk):
 
     def on_undo(self):
         if self.undo_stack:
-            self.shots = self.undo_stack.pop()
+            state = self.undo_stack.pop()
+            if isinstance(state, dict) and "shots" in state:
+                was_rectified = self.is_rectified
+                self.shots = state["shots"]
+                self.bullseye = state["bullseye"]
+                self.is_rectified = state["is_rectified"]
+                self.target_type = state["target_type"]
+                self.target_type_var.set(self.target_type)
+                self.canonical_cv2 = state["canonical_cv2"]
+                self.canonical_pil = state["canonical_pil"]
+                self.current_ann = state["current_ann"]
+                if self.is_rectified != was_rectified:
+                    self._update_entry_status_badge()
+                    self.on_fit_window()
+            else:
+                self.shots = state
             self.selected_shot_idx = min(self.selected_shot_idx or 0, max(0, len(self.shots) - 1)) if self.shots else None
             self.recalculate_scores()
             self.redraw_canvas()
             self.lbl_save_status.config(text="↺ Undone", foreground="#00e5ff")
 
     def on_canvas_left_click(self, event):
+        if not self.is_rectified:
+            if messagebox.askyesno(
+                "Rectify Target First?",
+                "This target is still an unrectified raw photo.\n\nRectify it now before placing shots manually?"
+            ):
+                self.on_rectify_manual()
+            return
         img_x, img_y = self.screen_to_img(event.x, event.y)
         self.drag_start_screen = (event.x, event.y)
 
@@ -1586,6 +2411,9 @@ class AnnotationEditor(tk.Tk):
 
     def on_canvas_mouse_move(self, event):
         img_x, img_y = self.screen_to_img(event.x, event.y)
+        if not self.is_rectified:
+            self.lbl_cursor_pos.config(text=f"Cursor: X={img_x:.1f}, Y={img_y:.1f} (Unrectified Raw)")
+            return
         dist_mm = math.hypot(img_x - self.bullseye[0], img_y - self.bullseye[1]) / self.pixels_per_mm
         self.lbl_cursor_pos.config(text=f"Cursor: X={img_x:.1f}, Y={img_y:.1f} (r={dist_mm:.1f} mm)")
 
@@ -1738,7 +2566,15 @@ class AnnotationEditor(tk.Tk):
     # =========================================================================
 
     def on_save(self):
-        if not self.current_json_path or not self.current_ann:
+        if not self.is_rectified:
+            if self.current_entry is not None:
+                messagebox.showwarning(
+                    "Unrectified Raw Target",
+                    "Please click Auto-Label (A) or Rectify (Manual) before saving an unlabeled raw photo."
+                )
+            return
+
+        if not self.current_ann and not self.current_json_path:
             return
 
         # Build AnnotatedShot list
@@ -1751,21 +2587,26 @@ class AnnotationEditor(tk.Tk):
                 score=int(s.get("score", 0)),
                 is_x=bool(s.get("is_x", False)),
                 caliber_mm=float(s.get("caliber_mm", self.caliber_mm)),
-                shot_type="single",
-                confidence=1.0,
+                shot_type=str(s.get("shot_type", "single")),
+                confidence=float(s.get("confidence", 1.0)),
             ))
+
+        base_target_id = self.current_ann.target_id if self.current_ann else self.current_json_path.stem
+        base_img_name = self.current_ann.image_filename if self.current_ann else f"{base_target_id}_canonical.png"
+        base_version = self.current_ann.version if self.current_ann else "1.0"
+        base_meta = dict(self.current_ann.metadata) if self.current_ann else {}
 
         # Update TargetAnnotation
         updated_ann = TargetAnnotation(
-            target_id=self.current_ann.target_id,
-            image_filename=self.current_ann.image_filename,
+            target_id=base_target_id,
+            image_filename=base_img_name,
             target_type=self.target_type,
             bullseye_center=self.bullseye,
             shots=new_shots,
             canvas_size=self.canvas_size,
             pixels_per_mm=self.pixels_per_mm,
-            version=self.current_ann.version,
-            metadata=dict(self.current_ann.metadata)
+            version=base_version,
+            metadata=base_meta,
         )
 
         m = self.group_metrics
@@ -1777,18 +2618,33 @@ class AnnotationEditor(tk.Tk):
         updated_ann.metadata["manually_verified"] = True
         updated_ann.metadata["verified_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
 
-        # 1. Save JSON to disk
-        updated_ann.to_json(self.current_json_path)
-
-        # 2. Regenerate Review Card image on disk
-        review_path = self.current_json_path.parent / f"{updated_ann.target_id}_review.png"
-        if self.canonical_cv2 is not None:
-            render_review_card(
+        # 1 & 2. Persist JSON, Canonical PNG (if newly rectified/unwritten), and Review Card
+        if self.current_entry is not None and self.canonical_cv2 is not None:
+            json_p, canon_p, review_path = self._write_target_bundle_to_disk(
+                entry=self.current_entry,
+                ann=updated_ann,
                 canonical_bgr=self.canonical_cv2,
-                annotation=updated_ann,
-                output_path=review_path,
-                redact_pii=self.current_ann.metadata.get("redact_pii", False)
+                redact_pii=bool(updated_ann.metadata.get("redact_pii", False)),
             )
+            self.current_json_path = json_p
+            self.current_image_path = canon_p
+        else:
+            if not self.current_json_path:
+                return
+            json_p = self.current_json_path
+            updated_ann.to_json(json_p)
+            review_path = json_p.parent / f"{updated_ann.target_id}_review.png"
+            if self.canonical_cv2 is not None:
+                render_review_card(
+                    canonical_bgr=self.canonical_cv2,
+                    annotation=updated_ann,
+                    output_path=review_path,
+                    redact_pii=updated_ann.metadata.get("redact_pii", False),
+                )
+
+        self.current_ann = updated_ann
+        self._update_entry_status_badge()
+        self._update_entry_counts_label()
 
         # 3. Optional copy to destination directory
         copy_msg = ""
@@ -1815,14 +2671,18 @@ class AnnotationEditor(tk.Tk):
 def launch_annotation_editor(
     target_path: Optional[Union[str, Path]] = None,
     target_type: Optional[str] = None,
-    copy_to_dir: Optional[Union[str, Path]] = None
+    copy_to_dir: Optional[Union[str, Path]] = None,
+    checkpoint_path: Optional[Union[str, Path]] = None,
+    peak_threshold: Optional[float] = None,
 ):
     """Entry point for running the Annotation Editor GUI."""
     try:
         app = AnnotationEditor(
             target_dir_or_file=target_path,
             target_type_override=target_type,
-            copy_to_dir=copy_to_dir
+            copy_to_dir=copy_to_dir,
+            checkpoint_path=str(checkpoint_path) if checkpoint_path is not None else "weights/target_scoring_hrnet_1024_best.pt",
+            peak_threshold=0.40 if peak_threshold is None else float(peak_threshold),
         )
         app.mainloop()
     except tk.TclError as e:

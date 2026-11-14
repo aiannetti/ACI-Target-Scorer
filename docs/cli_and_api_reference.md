@@ -379,7 +379,7 @@ target-scorer autolabel [OPTIONS]
 
 ## 8. `target-scorer annotate`
 
-Launches the interactive desktop GUI for reviewing, adding, moving, and deleting bullet hole markers with real-time NRA inward scoring. Features smooth pan & zoom, NRA ring guides, caliber adjustment, and the optical **Eagle Eye Scoring Gauge**.
+Launches the interactive desktop GUI for reviewing, adding, moving, and deleting bullet hole markers with real-time NRA inward scoring. Features unified target discovery (opening both labeled `.json` files and unlabeled raw target photos), in-editor neural auto-labeling (`✨ Auto-Label (A)`), manual metric rectification, batch auto-labeling, NRA ring guides, caliber adjustment, and the optical **Eagle Eye Scoring Gauge**.
 
 Source: [`src/target_scorer/gui/annotation_editor.py`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py)
 
@@ -392,10 +392,22 @@ target-scorer annotate [PATH] [OPTIONS]
 
 | Flag | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `path` | `str` (positional) | `None` | Path to directory containing JSON annotations (or single JSON file). |
-| `--dir` | `str` | `None` | Optional explicit flag for annotation directory path. |
-| `--target` | `str` | `None` (auto) | Override NRA target type: `B-2` or `B-3`. If omitted, read from JSON metadata. |
+| `path` | `str` (positional) | `None` | Path to directory containing JSON annotations or unlabeled target images (`.jpg`, `.png`, `.heic`, `.dng`, `.tiff`, `.webp`), or a single JSON/image file. |
+| `--dir` | `str` | `None` | Optional explicit flag for directory containing JSON annotations and/or unlabeled target images. |
+| `--target` | `str` | `None` (auto) | Override NRA target type: `B-2` or `B-3`. If omitted on labeled cards, read from JSON metadata; for unlabeled images, selectable via in-GUI dropdown. |
+| `--checkpoint` | `str` | `weights/target_scoring_hrnet_1024_best.pt` | Path to model weights checkpoint for in-editor neural auto-labeling. |
+| `--threshold` | `float` | `0.40` | Peak confidence threshold for in-editor auto-labeling. |
 | `--copy-to-dir` | `str` | `None` | Optional destination directory to copy raw photo, canonical image, and updated annotation JSON to on Save. |
+
+### In-Editor Auto-Labeling Features
+
+* **Unified Target Discovery:** Automatically indexes both `.json` files and raw images (`.jpg`, `.png`, `.heic`, `.tiff`, `.dng`, `.webp`, `.bmp`), excluding review cards (`*_review.png`) and deduplicating image/JSON pairs.
+* **Target Queue Filter:** Filter active target list by `All`, `Unlabeled`, or `Labeled`.
+* **Raw Photo Preview:** Displays orientation-corrected raw target photos with an `[UNLABELED]` state badge before processing.
+* **`✨ Auto-Label (A)` (Shortcut `A`):** Rectifies and runs in-memory neural inference via cached [`AutoLabelPipeline`](file:///home/antho/target_scorer/src/target_scorer/data/autolabel.py), populating detected shots and bullseye center onto the canvas and HUD. Fully reversible via `Ctrl+Z` (`Undo`), and saved to disk via `Ctrl+S`.
+* **`📐 Rectify (Manual)`:** Rectifies raw target photos to the $1024 \times 1024$ canonical metric grid with 0 shots for pure manual placement.
+* **`⚡ Auto-Label All Unlabeled`:** Background multi-threaded batch auto-labeler with live progress dialog that processes and auto-saves all unlabeled images in the folder.
+* **`⚙ Auto-Label Settings...`:** Modal dialog to configure model checkpoint `.pt`, peak confidence threshold, max shots, and competitor PII redaction.
 
 ---
 
@@ -579,6 +591,61 @@ scorecard_bgr = render_scoring_inspection_overlay(
     pixels_per_mm=4.0,
     bullet_diameter_mm=5.69,
     redact_pii=False,
+)
+```
+
+---
+
+### H. Auto-Label Pipeline API (`target_scorer.data.autolabel`)
+
+The [`AutoLabelPipeline`](file:///home/antho/target_scorer/src/target_scorer/data/autolabel.py) class provides a high-performance, stateful auto-labeling engine designed for interactive applications, GUI workstations, and high-throughput batch scripts. It maintains an in-memory cached instance of [`HighResHeatmapUNet`](file:///home/antho/target_scorer/src/target_scorer/models/unet.py) across calls to avoid model loading overhead.
+
+```python
+from pathlib import Path
+from target_scorer.data.autolabel import AutoLabelPipeline
+
+# 1. Initialize pipeline with cached model weights
+pipeline = AutoLabelPipeline(
+    checkpoint_path="weights/target_scoring_hrnet_1024_best.pt",
+    device_str=None,  # Automatically detects "cuda", "mps", or "cpu"
+)
+
+# 2. In-memory prediction directly on raw file paths, numpy arrays, or PIL images
+annotation, canonical_bgr = pipeline.predict(
+    image_source="path/to/phone_snap.heic",  # str, Path, np.ndarray, or PIL.Image
+    target_type="B-3",
+    canvas_size=1024,
+    pixels_per_mm=4.0,
+    threshold=0.40,
+    max_shots=10,
+    bullet_diameter_mm=5.69,
+    redact_pii=False,
+    target_id="relay_04_card_12",
+)
+
+print(f"Detected {len(annotation.shots)} shots:")
+for shot in annotation.shots:
+    print(f"  Shot #{shot.id}: ({shot.center_x:.2f}, {shot.center_y:.2f}) -> {shot.score}{'X' if shot.is_x else ''} (conf: {shot.confidence:.3f})")
+
+print(f"Total Score: {annotation.total_score} - {annotation.x_count}X")
+print(f"Canonical Image Shape: {canonical_bgr.shape}")  # (1024, 1024, 3)
+```
+
+#### Legacy / Standalone Batch Auto-Labeling Function:
+```python
+from target_scorer.data.autolabel import autolabel_target_image
+
+# Runs end-to-end auto-labeling and writes .json, _canonical.png, and _review.png to output directory
+annotation, json_path, review_path = autolabel_target_image(
+    image_source="path/to/raw_target.jpg",
+    output_dir="private/data/real_targets",
+    checkpoint_path="weights/target_scoring_hrnet_1024_best.pt",
+    target_type="B-3",
+    canvas_size=1024,
+    pixels_per_mm=4.0,
+    peak_threshold=0.40,
+    max_shots=10,
+    redact_pii=True,
 )
 ```
 

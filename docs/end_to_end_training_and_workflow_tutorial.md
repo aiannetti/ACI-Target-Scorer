@@ -24,17 +24,30 @@ The system operates on an active learning flywheel that continuously refines neu
 
 ```mermaid
 flowchart TD
-    A["Raw Smartphone Photos (Range)"] --> B["ImageCanonicalizer & Rectifier"]
-    B --> C["Canonical 1024x1024 Crops (@ 4.0 px/mm)"]
-    C --> D["Model Inference (HighResHeatmapUNet)"]
-    D --> E["Candidate Annotations (*.json) + Review Cards (*_review.png)"]
-    E --> F["Human Review via Interactive GUI Editor"]
-    F --> G["Verified Ground Truth Dataset"]
-    G --> H{"Training Strategy"}
-    H -- "Option A" --> I["Hybrid Blended Training (70% Synth / 30% Real)"]
-    H -- "Option B" --> J["Pure Real Fine-Tuning (100% Real)"]
-    I & J --> K["Updated Model Checkpoint (MRE < 0.35 mm)"]
-    K --> D
+    A["Raw Smartphone Photos (Range Snaps)"] --> B{"Auto-Labeling Pathway"}
+    
+    subgraph PathGUI["Interactive In-GUI Workflow (Fastest for Small/Medium Batches)"]
+        B -->|"target-scorer annotate <dir>"| C["Annotation Editor (Raw Preview)"]
+        C -->|"Press 'A' / Auto-Label"| D["In-Memory AutoLabelPipeline (Rectify + UNet)"]
+        D --> E["Instant Canvas Stamping & HUD Metrology"]
+        E --> F["Human Inspection & Eagle Eye Loupe ('E')"]
+        F --> G["Press 'Ctrl+S' (Atomic Save JSON + Canonical + Review)"]
+    end
+
+    subgraph PathCLI["Headless CLI Batch Workflow (Best for Large/Cluster Batches)"]
+        B -->|"target-scorer autolabel"| H["Batch Auto-Labeler CLI"]
+        H --> I["Writes *_canonical.png, *.json, *_review.png"]
+        I --> J["Secondary Review via 'target-scorer annotate'"]
+        J --> F
+    end
+
+    G --> K["Verified Ground Truth Dataset"]
+    K --> L{"Training Strategy"}
+    L -- "Option A" --> M["Hybrid Blended Training (70% Synth / 30% Real)"]
+    L -- "Option B" --> N["Pure Real Fine-Tuning (100% Real)"]
+    M & N --> O["Updated Model Checkpoint (MRE < 0.35 mm)"]
+    O --> D
+    O --> H
 ```
 
 ---
@@ -83,8 +96,24 @@ target-scorer rectify \
 
 Rather than annotating bullet holes from scratch, use the trained competition model (`target_scoring_hrnet_1024_best.pt`) to automatically propose candidate coordinates, ring scores, and review cards.
 
-### Batch Auto-Labeling Range Photos
-Place your raw photos in a folder (e.g. `raw_range_snaps/`) and run:
+The system offers two integrated workflows depending on your environment:
+
+### Method 1: Streamlined In-GUI Auto-Labeling (Fastest for Reviewers)
+You can skip manual CLI scripting and point the interactive editor directly at your folder of raw smartphone snaps:
+
+```bash
+target-scorer annotate raw_range_snaps/
+```
+
+1. **Raw Photo Preview:** The editor opens the folder, automatically indexes all images (`.jpg`, `.png`, `.heic`, `.dng`), and displays the orientation-corrected raw target photo with an `[UNLABELED]` state badge.
+2. **Select NRA Target Type:** Verify or select `B-2` (Slow Fire) or `B-3` (Timed/Rapid Fire) from the top dropdown.
+3. **Trigger Auto-Labeling (`A`):** Press `A` (or click `✨ Auto-Label (A)`). The in-memory [`AutoLabelPipeline`](file:///home/antho/target_scorer/src/target_scorer/data/autolabel.py) rectifies the card, evaluates neural heatmaps, extracts sub-pixel peaks, and renders the calibrated metric card and HUD instantly.
+4. **Instant Verification & Adjustment:** If any contentious line breaks exist, press `E` to launch the **Eagle Eye Scoring Gauge**. Press `Ctrl+Z` at any time to undo or revert.
+5. **Atomic Save (`Ctrl+S`):** Saves the verified `.json` annotation, the rectified `*_canonical.png`, and the verification `*_review.png` card in one action.
+6. **Batch Auto-Labeling in GUI:** Click `⚡ Auto-Label All Unlabeled` to auto-label the entire folder in a background worker thread with live modal progress and cancellation controls.
+
+### Method 2: Headless Command-Line Batch Auto-Labeling
+For headless servers, automated night runs, or large target collections, use the batch CLI:
 
 ```bash
 target-scorer autolabel \
@@ -100,7 +129,7 @@ target-scorer autolabel \
 ```
 
 ### Defense-in-Depth Spurious Peak Filtering:
-During auto-labeling, candidate detections pass through the [`filter_spurious_peaks`](file:///home/antho/target_scorer/src/target_scorer/metrology/peaks.py) pipeline to prevent false positives from contaminating your dataset:
+During auto-labeling (both in-GUI and headless CLI), candidate detections pass through the [`filter_spurious_peaks`](file:///home/antho/target_scorer/src/target_scorer/metrology/peaks.py) pipeline to prevent false positives from contaminating your dataset:
 * **Border Filter:** Automatically excludes detections within $4\text{ mm}$ ($16\text{ px}$) of the canvas edge.
 * **Header & Official NRA Seal Exclusion:** Masks printed registration lines ($y < 65\text{ px}$) and the official NRA emblem in the lower-left margin ($x \in [50, 260], y \in [870, 1024]$).
 * **Ink Chroma & 1D Stroke Tests:** Prunes blue ballpoint pen ink ($\text{mean}(B-G) > 7.0$), red grading pen ink ($\text{mean}(R-B) > 25.0$), and elongated pen strokes with bounding box aspect ratios $> 2.2$.
@@ -128,12 +157,13 @@ For cards requiring adjustment, launch the editor:
 target-scorer annotate private/data/real_targets
 ```
 
-1. **Navigate to Card:** Press `N` / `P` to step through the dataset.
-2. **Add Missed Holes:** If a shot was missed, click directly on the hole center. A new marker is stamped and scored.
-3. **Reposition Markers:** Drag any marker to align perfectly with the hole's physical grease ring.
-4. **Inspect Line Breaks:** Press `E` to open the **Eagle Eye Scoring Gauge** on contentious shots to verify NRA Rule 14.3 inward touches.
-5. **Delete False Positives:** Right-click the erroneous marker or press `Delete`.
-6. **Save Changes:** Press `Ctrl + S`. The `.json` file is updated with `manually_verified: true`, and the `*_review.png` is re-rendered.
+1. **Navigate to Card:** Press `N` / `P` to step through the dataset. Filter by `Unlabeled` or `Labeled` using the top dropdown.
+2. **Re-run Neural Detection:** Press `A` if you want to re-detect shots with different threshold settings.
+3. **Add Missed Holes:** If a shot was missed, click directly on the hole center. A new marker is stamped and scored.
+4. **Reposition Markers:** Drag any marker to align perfectly with the hole's physical grease ring.
+5. **Inspect Line Breaks:** Press `E` to open the **Eagle Eye Scoring Gauge** on contentious shots to verify NRA Rule 14.3 inward touches.
+6. **Delete False Positives:** Right-click the erroneous marker or press `Delete`.
+7. **Save Changes:** Press `Ctrl + S`. The `.json` file is updated with `manually_verified: true`, and the `*_review.png` is re-rendered.
 
 ---
 

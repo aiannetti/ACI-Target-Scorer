@@ -13,7 +13,7 @@ import numpy as np
 
 from target_scorer.data.autolabel import render_review_card
 from target_scorer.data.schema import AnnotatedShot, TargetAnnotation
-from target_scorer.gui.annotation_editor import AnnotationEditor
+from target_scorer.gui.annotation_editor import AnnotationEditor, TargetEntry
 
 
 class TestAnnotationEditor(unittest.TestCase):
@@ -376,6 +376,373 @@ class TestAnnotationEditor(unittest.TestCase):
             self.assertTrue((export_struct / "raw" / "test_target.jpg").exists())
         finally:
             app2.destroy()
+
+    def test_mixed_target_discovery(self):
+        """Verifies unified discovery of labeled JSONs, unlabeled images, exclusion of review cards, and single image loading."""
+        import cv2
+
+        sub_dir = self.tmp_p / "mixed_targets"
+        sub_dir.mkdir(parents=True)
+
+        # 1. Labeled target: json + canonical + review
+        t1_canon = sub_dir / "target_01_canonical.png"
+        cv2.imwrite(str(t1_canon), np.full((1024, 1024, 3), 220, dtype=np.uint8))
+        t1_ann = TargetAnnotation(
+            target_id="target_01",
+            image_filename=t1_canon.name,
+            target_type="B-2",
+            bullseye_center=(512.0, 512.0),
+            shots=[AnnotatedShot(id=1, center_x=512.0, center_y=512.0, score=10)],
+            canvas_size=1024,
+            pixels_per_mm=4.0,
+        )
+        t1_json = sub_dir / "target_01.json"
+        t1_ann.to_json(t1_json)
+        t1_rev = sub_dir / "target_01_review.png"
+        cv2.imwrite(str(t1_rev), np.full((1024, 1024, 3), 200, dtype=np.uint8))
+
+        # 2. Unlabeled raw target photo
+        t2_raw = sub_dir / "target_02_raw.jpg"
+        cv2.imwrite(str(t2_raw), np.full((800, 600, 3), 210, dtype=np.uint8))
+
+        # 3. Unlabeled standalone canonical image
+        t3_canon = sub_dir / "target_03_canonical.png"
+        cv2.imwrite(str(t3_canon), np.full((1024, 1024, 3), 220, dtype=np.uint8))
+
+        # 4. Stray review card - MUST BE EXCLUDED from discovery!
+        stray_rev = sub_dir / "stray_review.png"
+        cv2.imwrite(str(stray_rev), np.full((1024, 1024, 3), 150, dtype=np.uint8))
+
+        app = AnnotationEditor(target_dir_or_file=sub_dir)
+        try:
+            # Check target discovery count (exactly 3 valid targets: target_01, target_02, target_03)
+            self.assertEqual(len(app.target_entries), 3)
+
+            # Check that stray review card was excluded
+            discovered_ids = [e.target_id for e in app.target_entries]
+            self.assertIn("target_01", discovered_ids)
+            self.assertIn("target_02", discovered_ids)
+            self.assertIn("target_03", discovered_ids)
+            self.assertNotIn("stray", discovered_ids)
+            self.assertNotIn("stray_review", discovered_ids)
+
+            # Check labeled status
+            t1_entry = next(e for e in app.target_entries if e.target_id == "target_01")
+            self.assertTrue(t1_entry.is_labeled)
+            self.assertEqual(t1_entry.json_path, t1_json)
+
+            t2_entry = next(e for e in app.target_entries if e.target_id == "target_02")
+            self.assertFalse(t2_entry.is_labeled)
+            self.assertIsNone(t2_entry.json_path)
+            self.assertEqual(t2_entry.image_path, t2_raw)
+
+            t3_entry = next(e for e in app.target_entries if e.target_id == "target_03")
+            self.assertFalse(t3_entry.is_labeled)
+            self.assertIsNone(t3_entry.json_path)
+            self.assertEqual(t3_entry.canonical_path, t3_canon)
+
+            # Backwards compatibility: json_files only includes valid JSONs
+            self.assertEqual(len(app.json_files), 1)
+        finally:
+            app.destroy()
+
+        # 5. Single unlabeled raw image loading
+        app_single = AnnotationEditor(target_dir_or_file=t2_raw)
+        try:
+            self.assertEqual(len(app_single.target_entries), 1)
+            self.assertFalse(app_single.target_entries[0].is_labeled)
+            self.assertFalse(app_single.is_rectified)
+            self.assertEqual(len(app_single.shots), 0)
+        finally:
+            app_single.destroy()
+
+    def test_on_autolabel_current_and_undo_and_save(self):
+        """Verifies in-editor auto-labeling, undo reversibility, and on_save disk persistence."""
+        import cv2
+        from unittest.mock import MagicMock
+
+        unlabeled_p = self.tmp_p / "target_unlabeled_01.jpg"
+        cv2.imwrite(str(unlabeled_p), np.full((800, 800, 3), 220, dtype=np.uint8))
+
+        app = AnnotationEditor(target_dir_or_file=unlabeled_p, target_type_override="B-2")
+        try:
+            self.assertFalse(app.is_rectified)
+            self.assertEqual(len(app.shots), 0)
+
+            # Mock pipeline predict returning 2 detected shots
+            mock_shots = [
+                AnnotatedShot(id=1, center_x=512.0, center_y=512.0, score=10, is_x=True, caliber_mm=5.69, confidence=0.98),
+                AnnotatedShot(id=2, center_x=570.0, center_y=512.0, score=9, is_x=False, caliber_mm=5.69, confidence=0.95),
+            ]
+            mock_ann = TargetAnnotation(
+                target_id="target_unlabeled_01",
+                image_filename="target_unlabeled_01_canonical.png",
+                target_type="B-2",
+                bullseye_center=(512.0, 512.0),
+                shots=mock_shots,
+                canvas_size=1024,
+                pixels_per_mm=4.0,
+                metadata={"autolabeled": True},
+            )
+            mock_canon = np.full((1024, 1024, 3), 230, dtype=np.uint8)
+
+            mock_pipeline = MagicMock()
+            mock_pipeline.predict.return_value = (mock_ann, mock_canon)
+            app._get_autolabel_pipeline = MagicMock(return_value=mock_pipeline)
+
+            # 1. Run Auto-label Current
+            app.on_autolabel_current()
+            self.assertTrue(app.is_rectified)
+            self.assertEqual(len(app.shots), 2)
+            self.assertEqual(app.shots[0]["score"], 10)
+            self.assertFalse(app.shots[0]["is_x"])  # B-2 has no X-ring per NRA Rule 4.2
+            self.assertEqual(app.shots[1]["score"], 9)
+
+            # 2. Test Undo reverts to empty raw state
+            app.on_undo()
+            self.assertEqual(len(app.shots), 0)
+
+            # 3. Re-apply auto-label and Save
+            app.on_autolabel_current()
+            self.assertEqual(len(app.shots), 2)
+            app.on_save()
+
+            # Verify files written to disk
+            saved_json = self.tmp_p / "target_unlabeled_01.json"
+            saved_canon = self.tmp_p / "target_unlabeled_01_canonical.png"
+            saved_rev = self.tmp_p / "target_unlabeled_01_review.png"
+
+            self.assertTrue(saved_json.exists())
+            self.assertTrue(saved_canon.exists())
+            self.assertTrue(saved_rev.exists())
+
+            # Verify TargetEntry state updated
+            self.assertTrue(app.current_entry.is_labeled)
+            self.assertEqual(app.current_entry.json_path, saved_json)
+            self.assertEqual(app.current_entry.canonical_path, saved_canon)
+
+            # Verify deserialized annotation
+            restored = TargetAnnotation.from_json(saved_json)
+            self.assertEqual(len(restored.shots), 2)
+            self.assertTrue(restored.metadata.get("manually_verified"))
+        finally:
+            app.destroy()
+
+    def test_on_rectify_manual(self):
+        """Verifies manual rectification without neural inference, shot placement, and saving."""
+        import cv2
+        from unittest.mock import MagicMock, patch
+
+        unlabeled_p = self.tmp_p / "target_manual_01.jpg"
+        cv2.imwrite(str(unlabeled_p), np.full((800, 800, 3), 220, dtype=np.uint8))
+
+        app = AnnotationEditor(target_dir_or_file=unlabeled_p, target_type_override="B-2")
+        try:
+            self.assertFalse(app.is_rectified)
+
+            # Mock TargetRectifier.rectify to return canonical 1024x1024 image
+            mock_rect_result = MagicMock()
+            mock_rect_result.canonical_crop = np.full((1024, 1024, 3), 220, dtype=np.uint8)
+            mock_rect_result.tilt_angle_deg = 5.2
+            mock_rect_result.blur_metric = 145.0
+
+            with patch("target_scorer.gui.annotation_editor.TargetRectifier.rectify", return_value=mock_rect_result):
+                app.on_rectify_manual()
+
+            self.assertTrue(app.is_rectified)
+            self.assertEqual(len(app.shots), 0)
+            self.assertEqual(app.canvas_size, 1024)
+            self.assertEqual(app.canonical_cv2.shape, (1024, 1024, 3))
+            self.assertEqual(app.bullseye, (512.0, 512.0))
+
+            # Add a manual shot at (512, 512)
+            app.shots.append({
+                "id": 1,
+                "x": 512.0,
+                "y": 512.0,
+                "score": 0,
+                "is_x": False,
+                "caliber_mm": 5.69,
+                "confidence": 1.0,
+            })
+            app.recalculate_scores()
+            self.assertEqual(app.shots[0]["score"], 10)
+            self.assertFalse(app.shots[0]["is_x"])  # B-2 has no X-ring per NRA Rule 4.2
+
+            # Save manual annotation
+            app.on_save()
+
+            saved_json = self.tmp_p / "target_manual_01.json"
+            saved_canon = self.tmp_p / "target_manual_01_canonical.png"
+            saved_rev = self.tmp_p / "target_manual_01_review.png"
+
+            self.assertTrue(saved_json.exists())
+            self.assertTrue(saved_canon.exists())
+            self.assertTrue(saved_rev.exists())
+            self.assertTrue(app.current_entry.is_labeled)
+        finally:
+            app.destroy()
+
+    def test_on_autolabel_all_unlabeled_batch(self):
+        """Verifies batch auto-labeling across multiple unlabeled targets in background thread."""
+        import cv2
+        from unittest.mock import MagicMock
+
+        batch_dir = self.tmp_p / "batch_test"
+        batch_dir.mkdir(parents=True)
+
+        # Create 2 unlabeled targets
+        u1 = batch_dir / "batch_target_01.jpg"
+        u2 = batch_dir / "batch_target_02.jpg"
+        cv2.imwrite(str(u1), np.full((800, 800, 3), 220, dtype=np.uint8))
+        cv2.imwrite(str(u2), np.full((800, 800, 3), 220, dtype=np.uint8))
+
+        app = AnnotationEditor(target_dir_or_file=batch_dir)
+        try:
+            self.assertEqual(len(app.target_entries), 2)
+            self.assertFalse(app.target_entries[0].is_labeled)
+            self.assertFalse(app.target_entries[1].is_labeled)
+
+            # Mock pipeline
+            mock_pipeline = MagicMock()
+            mock_pipeline.ensure_model_loaded.return_value = True
+
+            def mock_predict(image_source, target_id=None, **kwargs):
+                t_id = target_id or "batch_mock"
+                ann = TargetAnnotation(
+                    target_id=t_id,
+                    image_filename=f"{t_id}_canonical.png",
+                    target_type="B-2",
+                    bullseye_center=(512.0, 512.0),
+                    shots=[AnnotatedShot(id=1, center_x=512.0, center_y=512.0, score=10, is_x=True)],
+                    canvas_size=1024,
+                    pixels_per_mm=4.0,
+                )
+                canon = np.full((1024, 1024, 3), 220, dtype=np.uint8)
+                return ann, canon
+
+            mock_pipeline.predict.side_effect = mock_predict
+            app._get_autolabel_pipeline = MagicMock(return_value=mock_pipeline)
+
+            # In headless unittests, queue after() callbacks from background thread
+            # and dispatch them on main thread after join to adhere to Tkinter thread safety
+            queued_afters = []
+            app.after = lambda delay, func, *args: queued_afters.append((func, args))
+
+            # Run batch auto-label
+            app.on_autolabel_all_unlabeled()
+
+            # Wait for background thread to finish
+            if hasattr(app, "_batch_thread") and app._batch_thread is not None:
+                app._batch_thread.join(timeout=10.0)
+
+            # Dispatch queued callbacks on the main thread
+            for func, args in queued_afters:
+                func(*args)
+            app.update()
+
+            # Verify files on disk for both targets
+            for t_id in ("batch_target_01", "batch_target_02"):
+                self.assertTrue((batch_dir / f"{t_id}.json").exists())
+                self.assertTrue((batch_dir / f"{t_id}_canonical.png").exists())
+                self.assertTrue((batch_dir / f"{t_id}_review.png").exists())
+
+            # Verify all entries transitioned to is_labeled = True
+            for entry in app.target_entries:
+                self.assertTrue(entry.is_labeled)
+                self.assertIsNotNone(entry.json_path)
+                self.assertIsNotNone(entry.canonical_path)
+        finally:
+            app.destroy()
+
+    def test_target_type_and_filter_switching(self):
+        """Verifies filtering (All / Unlabeled / Labeled) and Target Type switching."""
+        import cv2
+
+        filt_dir = self.tmp_p / "filter_test"
+        filt_dir.mkdir(parents=True)
+
+        # 1 labeled target
+        l_canon = filt_dir / "target_labeled_canonical.png"
+        cv2.imwrite(str(l_canon), np.full((1024, 1024, 3), 220, dtype=np.uint8))
+        l_ann = TargetAnnotation(
+            target_id="target_labeled",
+            image_filename=l_canon.name,
+            target_type="B-2",
+            bullseye_center=(512.0, 512.0),
+            shots=[AnnotatedShot(id=1, center_x=512.0, center_y=512.0, score=10)],
+            canvas_size=1024,
+            pixels_per_mm=4.0,
+        )
+        l_ann.to_json(filt_dir / "target_labeled.json")
+
+        # 2 unlabeled targets
+        cv2.imwrite(str(filt_dir / "target_unlab_1.jpg"), np.full((800, 800, 3), 220, dtype=np.uint8))
+        cv2.imwrite(str(filt_dir / "target_unlab_2.jpg"), np.full((800, 800, 3), 220, dtype=np.uint8))
+
+        app = AnnotationEditor(target_dir_or_file=filt_dir)
+        try:
+            self.assertEqual(len(app.target_entries), 3)
+
+            # Filter: All
+            app.filter_var.set("All")
+            app.on_filter_changed()
+            self.assertEqual(len(app.filtered_indices), 3)
+
+            # Filter: Unlabeled
+            app.filter_var.set("Unlabeled")
+            app.on_filter_changed()
+            self.assertEqual(len(app.filtered_indices), 2)
+            self.assertFalse(app.current_entry.is_labeled)
+
+            # Filter: Labeled
+            app.filter_var.set("Labeled")
+            app.on_filter_changed()
+            self.assertEqual(len(app.filtered_indices), 1)
+            self.assertTrue(app.current_entry.is_labeled)
+            self.assertEqual(app.current_entry.target_id, "target_labeled")
+
+            # Target Type Switch: B-2 vs B-3
+            app.target_type_var.set("B-3")
+            app.on_target_type_changed()
+            self.assertEqual(app.target_type, "B-3")
+            self.assertEqual(app.shots[0]["score"], 10)
+            self.assertTrue(app.shots[0]["is_x"])  # Dead-center bullseye is 10-X on B-3
+
+            app.target_type_var.set("B-2")
+            app.on_target_type_changed()
+            self.assertEqual(app.target_type, "B-2")
+            self.assertEqual(app.shots[0]["score"], 10)
+            self.assertFalse(app.shots[0]["is_x"])  # B-2 has no X-ring per NRA Rule 4.2
+        finally:
+            app.destroy()
+
+    def test_missing_checkpoint_warning(self):
+        """Verifies graceful handling (messagebox.showwarning) when model checkpoint path does not exist."""
+        import cv2
+        from unittest.mock import patch
+
+        unlab_p = self.tmp_p / "chk_test.jpg"
+        cv2.imwrite(str(unlab_p), np.full((800, 800, 3), 220, dtype=np.uint8))
+
+        app = AnnotationEditor(target_dir_or_file=unlab_p)
+        try:
+            # Set a non-existent checkpoint path
+            app.autolabel_checkpoint_var.set("/non/existent/checkpoint_weights.pt")
+
+            # 1. on_autolabel_current() should warn instead of crashing
+            with patch("tkinter.messagebox.showwarning") as mock_warn:
+                app.on_autolabel_current()
+                mock_warn.assert_called_once()
+                self.assertIn("Checkpoint Not Found", mock_warn.call_args[0][0])
+
+            # 2. on_autolabel_all_unlabeled() should warn instead of crashing
+            with patch("tkinter.messagebox.showwarning") as mock_warn:
+                app.on_autolabel_all_unlabeled()
+                mock_warn.assert_called_once()
+                self.assertIn("Checkpoint Not Found", mock_warn.call_args[0][0])
+        finally:
+            app.destroy()
 
 
 if __name__ == "__main__":

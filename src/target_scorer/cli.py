@@ -163,21 +163,21 @@ def annotate_cli():
 
     parser = argparse.ArgumentParser(
         prog="target-scorer annotate",
-        description="Interactive GUI for Reviewing and Correcting Shot Markers and Target Scores"
+        description="Interactive GUI for Reviewing, Auto-Labeling, and Correcting Shot Markers and Target Scores"
     )
     parser.add_argument(
         "path",
         type=str,
         nargs="?",
         default=None,
-        help="Path to directory containing JSON annotations (e.g. autolabeled_photos/B-3 or private/data/real_targets) or single JSON file"
+        help="Path to directory of JSON annotations or unlabeled target images (e.g. autolabeled_photos/B-3 or range_photos), or a single JSON/image file"
     )
     parser.add_argument(
         "--dir",
         type=str,
         dest="dir_opt",
         default=None,
-        help="Directory containing JSON annotations and target images"
+        help="Directory containing JSON annotations and/or unlabeled target images"
     )
     parser.add_argument(
         "--target",
@@ -192,13 +192,27 @@ def annotate_cli():
         default=None,
         help="Optional destination directory to copy raw photo, canonical image, and annotations to on Save"
     )
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default="weights/target_scoring_hrnet_1024_best.pt",
+        help="Path to model weights checkpoint for in-editor auto-labeling (default: weights/target_scoring_hrnet_1024_best.pt)"
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.40,
+        help="Peak confidence threshold for in-editor auto-labeling (default: 0.40)"
+    )
     args = parser.parse_args(sys.argv[2:])
 
     target_path = args.dir_opt or args.path
     launch_annotation_editor(
         target_path=target_path,
         target_type=args.target.upper() if args.target else None,
-        copy_to_dir=args.copy_to_dir
+        copy_to_dir=args.copy_to_dir,
+        checkpoint_path=args.checkpoint,
+        peak_threshold=args.threshold,
     )
 
 
