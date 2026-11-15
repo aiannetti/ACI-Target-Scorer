@@ -791,9 +791,22 @@ class TestAnnotationEditor(unittest.TestCase):
                 found.extend(collect_buttons(child))
             return found
 
+        def assert_ascii_widgets(widget, label):
+            if widget.winfo_ismapped() and "text" in widget.keys():
+                txt = str(widget.cget("text"))
+                non_ascii = [ch for ch in txt if ord(ch) > 127]
+                self.assertEqual(
+                    non_ascii,
+                    [],
+                    f"{label} widget {widget.winfo_class()} has non-ASCII text {txt!r}",
+                )
+            for child in widget.winfo_children():
+                assert_ascii_widgets(child, label)
+
         def assert_no_button_clipping(root_widget, label):
             root_widget.update_idletasks()
             root_widget.update()
+            assert_ascii_widgets(root_widget, label)
             buttons = collect_buttons(root_widget)
             self.assertGreater(len(buttons), 0, f"No buttons found in {label}")
             for btn in buttons:
@@ -812,11 +825,11 @@ class TestAnnotationEditor(unittest.TestCase):
 
         app = AnnotationEditor(target_dir_or_file=self.tmp_dir)
         try:
-            # 1. Verify Dark & Light mode main window buttons are unclipped
+            # 1. Verify Dark & Light mode main window buttons are unclipped and ASCII-clean
             buttons_dark = assert_no_button_clipping(app, "AnnotationEditor (dark)")
 
             # 2. Verify Clear Shots, Revert, Save, and Theme button share Caliber's toolbar row
-            action_texts = ("✕ Clear Shots", "↺ Revert", "💾 Save (Ctrl+S)", "☀️ Light Mode")
+            action_texts = ("Clear Shots", "Revert", "Save (Ctrl+S)", "Light Mode")
             by_text = {b.cget("text"): b for b in buttons_dark}
             caliber_parent = app.caliber_combo.winfo_parent()
             caliber_right = app.caliber_combo.winfo_x() + app.caliber_combo.winfo_width()
@@ -831,27 +844,24 @@ class TestAnnotationEditor(unittest.TestCase):
 
             # Theme toggle button stays unclipped after toggling to Light Mode
             app.toggle_theme()
+            self.assertEqual(app.btn_theme.cget("text"), "Dark Mode")
             assert_no_button_clipping(app, "AnnotationEditor (light)")
 
-            # 3. Verify EagleEyeLoupe buttons are not crushed/clipped and arrow glyphs render cleanly
+            # 3. Verify EagleEyeLoupe buttons are unclipped and directional arrows use graphical icons
             app.selected_shot_idx = 0
             app.on_open_eagle_eye(toggle=False)
             try:
-                import tkinter.font as tkfont
-
-                self.assertIsNotNone(app.eagle_eye_dialog)
-                ee_buttons = assert_no_button_clipping(app.eagle_eye_dialog, "EagleEyeLoupe")
-                ee_by_text = {b.cget("text"): b for b in ee_buttons}
-                ui_font = tkfont.Font(root=app, family=app.ui_font_family, size=10)
-                for arrow in ("↑", "↓", "←", "→"):
-                    self.assertIn(arrow, ee_by_text, f"Missing directional button {arrow!r}")
-                    self.assertGreater(
-                        ui_font.measure(arrow),
-                        0,
-                        f"Directional glyph {arrow!r} has zero width in {app.ui_font_family!r}",
-                    )
-                self.assertLess(ee_by_text["←"].winfo_x(), ee_by_text["→"].winfo_x())
-                self.assertLess(ee_by_text["↑"].winfo_y(), ee_by_text["↓"].winfo_y())
+                ee = app.eagle_eye_dialog
+                self.assertIsNotNone(ee)
+                assert_no_button_clipping(ee, "EagleEyeLoupe")
+                for direction in ("up", "down", "left", "right"):
+                    btn = getattr(ee, f"btn_{direction}")
+                    self.assertTrue(btn.winfo_ismapped(), f"btn_{direction} is not mapped")
+                    self.assertTrue(bool(btn.cget("image")), f"btn_{direction} has no arrow image")
+                    self.assertGreaterEqual(btn.winfo_width(), btn.winfo_reqwidth())
+                    self.assertGreaterEqual(btn.winfo_height(), btn.winfo_reqheight())
+                self.assertLess(ee.btn_left.winfo_x(), ee.btn_right.winfo_x())
+                self.assertLess(ee.btn_up.winfo_y(), ee.btn_down.winfo_y())
             finally:
                 app.close_eagle_eye()
 

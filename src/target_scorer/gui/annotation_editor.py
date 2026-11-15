@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import cv2
 import numpy as np
-from PIL import Image, ImageTk
+from PIL import Image, ImageDraw, ImageTk
 
 import tkinter as tk
 from tkinter import filedialog, font as tkfont, messagebox, ttk
@@ -163,6 +163,7 @@ class EagleEyeLoupe(tk.Toplevel):
         self.nudge_step: float = 0.5
         self.canvas_dim: int = 380
         self.loupe_photo: Optional[ImageTk.PhotoImage] = None
+        self._arrow_icons: Dict[str, ImageTk.PhotoImage] = {}
 
         self.title(f"Eagle Eye Scoring Gauge - Shot #{self.get_current_shot_id()}")
         self.geometry("460x795")
@@ -211,12 +212,43 @@ class EagleEyeLoupe(tk.Toplevel):
             pass
         super().destroy()
 
+    def _make_arrow_icon(self, direction: str, size: int = 15, theme: Optional[str] = None) -> ImageTk.PhotoImage:
+        """Draws a crisp anti-aliased directional triangle icon independent of X11 fonts."""
+        active_theme = theme if theme is not None else getattr(self.parent_editor, "current_theme", "dark")
+        fill = "#f0f0f0" if active_theme == "dark" else "#1c1c1c"
+        scale = 2
+        s2 = size * scale
+        img = Image.new("RGBA", (s2, s2), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        pad = 3 * scale
+        end = s2 - 1 - pad
+        mid = (s2 - 1) / 2.0
+        polygons = {
+            "up": [(mid, pad), (pad, end), (end, end)],
+            "down": [(pad, pad), (end, pad), (mid, end)],
+            "left": [(pad, mid), (end, pad), (end, end)],
+            "right": [(pad, pad), (end, mid), (pad, end)],
+        }
+        draw.polygon(polygons[direction], fill=fill)
+        resampling = getattr(Image, "Resampling", Image).LANCZOS
+        return ImageTk.PhotoImage(img.resize((size, size), resampling), master=self)
+
+    def _build_arrow_icons(self, theme: Optional[str] = None):
+        """Builds or refreshes cached directional arrow PhotoImages for all four directions."""
+        for direction in ("up", "down", "left", "right"):
+            self._arrow_icons[direction] = self._make_arrow_icon(direction, theme=theme)
+
     def update_theme(self, theme: str):
         bg_color = "#1c1c1c" if theme == "dark" else "#fafafa"
         border_color = "#323440" if theme == "dark" else "#d0d0d0"
         self.configure(bg=bg_color)
         if hasattr(self, "canvas"):
             self.canvas.configure(highlightbackground=border_color)
+        self._build_arrow_icons(theme=theme)
+        for direction in ("up", "down", "left", "right"):
+            btn = getattr(self, f"btn_{direction}", None)
+            if btn is not None:
+                btn.configure(image=self._arrow_icons[direction])
 
     def get_current_shot(self) -> Optional[Dict[str, Any]]:
         if 0 <= self.shot_idx < len(self.parent_editor.shots):
@@ -280,7 +312,7 @@ class EagleEyeLoupe(tk.Toplevel):
         self.lbl_shot_title = ttk.Label(top_frame, text=f"SHOT #{shot_id} OPTICAL INSPECTION", style="Header.TLabel")
         self.lbl_shot_title.pack(side=tk.LEFT)
 
-        btn_close = ttk.Button(top_frame, text="✕ Close (Esc)", style="Danger.TButton", command=self.on_close)
+        btn_close = ttk.Button(top_frame, text="Close (Esc)", style="Danger.TButton", command=self.on_close)
         btn_close.pack(side=tk.RIGHT)
 
         # 2. Reticle Canvas Frame
@@ -335,35 +367,36 @@ class EagleEyeLoupe(tk.Toplevel):
             btn_s.pack(side=tk.LEFT, padx=2)
 
         # Nudge Pad
+        self._build_arrow_icons()
         pad_frame = ttk.Frame(ctrl_frame)
         pad_frame.pack(side=tk.TOP, pady=(0, 6))
 
-        btn_up = ttk.Button(pad_frame, text="↑", width=4, command=lambda: self.nudge(0, -self.nudge_step))
-        btn_up.grid(row=0, column=1, padx=2, pady=2)
-        btn_left = ttk.Button(pad_frame, text="←", width=4, command=lambda: self.nudge(-self.nudge_step, 0))
-        btn_left.grid(row=1, column=0, padx=2, pady=2)
-        btn_center = ttk.Label(pad_frame, text="✛", font=self.parent_editor._font(11, "bold"), foreground="#ffd700", anchor="center")
+        self.btn_up = ttk.Button(pad_frame, image=self._arrow_icons["up"], width=4, command=lambda: self.nudge(0, -self.nudge_step))
+        self.btn_up.grid(row=0, column=1, padx=2, pady=2)
+        self.btn_left = ttk.Button(pad_frame, image=self._arrow_icons["left"], width=4, command=lambda: self.nudge(-self.nudge_step, 0))
+        self.btn_left.grid(row=1, column=0, padx=2, pady=2)
+        btn_center = ttk.Label(pad_frame, text="+", font=self.parent_editor._font(11, "bold"), foreground="#ffd700", anchor="center")
         btn_center.grid(row=1, column=1, padx=2, pady=2)
-        btn_right = ttk.Button(pad_frame, text="→", width=4, command=lambda: self.nudge(self.nudge_step, 0))
-        btn_right.grid(row=1, column=2, padx=2, pady=2)
-        btn_down = ttk.Button(pad_frame, text="↓", width=4, command=lambda: self.nudge(0, self.nudge_step))
-        btn_down.grid(row=2, column=1, padx=2, pady=2)
+        self.btn_right = ttk.Button(pad_frame, image=self._arrow_icons["right"], width=4, command=lambda: self.nudge(self.nudge_step, 0))
+        self.btn_right.grid(row=1, column=2, padx=2, pady=2)
+        self.btn_down = ttk.Button(pad_frame, image=self._arrow_icons["down"], width=4, command=lambda: self.nudge(0, self.nudge_step))
+        self.btn_down.grid(row=2, column=1, padx=2, pady=2)
 
         # Bottom Shot Navigation Bar
         nav_row = ttk.Frame(ctrl_frame)
         nav_row.pack(side=tk.TOP, fill=tk.X, pady=(4, 0))
 
-        btn_prev = ttk.Button(nav_row, text="← Prev Shot (P)", command=self.prev_shot)
+        btn_prev = ttk.Button(nav_row, text="< Prev Shot (P)", command=self.prev_shot)
         btn_prev.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 3))
 
-        btn_next = ttk.Button(nav_row, text="Next Shot (N) →", command=self.next_shot)
+        btn_next = ttk.Button(nav_row, text="Next Shot (N) >", command=self.next_shot)
         btn_next.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(3, 0))
 
         # Big dedicated Exit button
         exit_row = ttk.Frame(ctrl_frame)
         exit_row.pack(side=tk.TOP, fill=tk.X, pady=(8, 0))
 
-        btn_exit = ttk.Button(exit_row, text="✕ Exit Eagle Eye (Esc / E)", style="Danger.TButton", command=self.on_close)
+        btn_exit = ttk.Button(exit_row, text="Exit Eagle Eye (Esc / E)", style="Danger.TButton", command=self.on_close)
         btn_exit.pack(fill=tk.X, expand=True)
 
     def _bind_events(self):
@@ -552,7 +585,7 @@ class AutoLabelSettingsDialog(tk.Toplevel):
         ttk.Entry(frame, textvariable=self._ckpt_var, width=36).grid(row=1, column=1, sticky=tk.EW, padx=8, pady=6)
         ttk.Button(frame, text="Browse...", command=self._on_browse_ckpt).grid(row=1, column=2, pady=6)
 
-        ttk.Label(frame, text="Peak Threshold (0.05–0.95):").grid(row=2, column=0, sticky=tk.W, pady=6)
+        ttk.Label(frame, text="Peak Threshold (0.05-0.95):").grid(row=2, column=0, sticky=tk.W, pady=6)
         ttk.Spinbox(
             frame, from_=0.05, to=0.95, increment=0.05, textvariable=self._thresh_var, width=10
         ).grid(row=2, column=1, sticky=tk.W, padx=8, pady=6)
@@ -856,9 +889,9 @@ class AnnotationEditor(tk.Tk):
 
         if hasattr(self, "btn_theme"):
             if theme == "dark":
-                self.btn_theme.config(text="☀️ Light Mode")
+                self.btn_theme.config(text="Light Mode")
             else:
-                self.btn_theme.config(text="🌙 Dark Mode")
+                self.btn_theme.config(text="Dark Mode")
 
         if hasattr(self, "lbl_status_msg"):
             self.lbl_status_msg.config(foreground=status_fg)
@@ -878,19 +911,19 @@ class AnnotationEditor(tk.Tk):
         top_bar = ttk.Frame(self, padding=(10, 6))
         top_bar.pack(side=tk.TOP, fill=tk.X)
 
-        btn_open = ttk.Button(top_bar, text="📁 Open Dir...", style="Accent.TButton", command=self.on_open_directory)
+        btn_open = ttk.Button(top_bar, text="Open Dir...", style="Accent.TButton", command=self.on_open_directory)
         btn_open.pack(side=tk.LEFT, padx=(0, 4))
 
-        btn_open_img = ttk.Button(top_bar, text="🖼️ Open File...", command=self.on_open_image)
+        btn_open_img = ttk.Button(top_bar, text="Open File...", command=self.on_open_image)
         btn_open_img.pack(side=tk.LEFT, padx=(0, 8))
 
-        btn_prev = ttk.Button(top_bar, text="← Prev (P)", command=self.on_prev_target)
+        btn_prev = ttk.Button(top_bar, text="< Prev (P)", command=self.on_prev_target)
         btn_prev.pack(side=tk.LEFT, padx=2)
 
         self.lbl_target_info = ttk.Label(top_bar, text="No targets loaded", font=self._font(10, "bold"), width=34)
         self.lbl_target_info.pack(side=tk.LEFT, padx=6)
 
-        btn_next = ttk.Button(top_bar, text="Next (N) →", command=self.on_next_target)
+        btn_next = ttk.Button(top_bar, text="Next (N) >", command=self.on_next_target)
         btn_next.pack(side=tk.LEFT, padx=2)
 
         ttk.Separator(top_bar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
@@ -936,18 +969,18 @@ class AnnotationEditor(tk.Tk):
         ttk.Separator(edit_bar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=6)
 
         # Primary action & theme buttons placed adjacent to Caliber for quick access without clipping
-        btn_clear = ttk.Button(edit_bar, text="✕ Clear Shots", style="Danger.TButton", command=self.on_clear_shots)
+        btn_clear = ttk.Button(edit_bar, text="Clear Shots", style="Danger.TButton", command=self.on_clear_shots)
         btn_clear.pack(side=tk.LEFT, padx=4)
 
-        btn_reset = ttk.Button(edit_bar, text="↺ Revert", command=self.on_revert)
+        btn_reset = ttk.Button(edit_bar, text="Revert", command=self.on_revert)
         btn_reset.pack(side=tk.LEFT, padx=4)
 
-        btn_save = ttk.Button(edit_bar, text="💾 Save (Ctrl+S)", style="Accent.TButton", command=self.on_save)
+        btn_save = ttk.Button(edit_bar, text="Save (Ctrl+S)", style="Accent.TButton", command=self.on_save)
         btn_save.pack(side=tk.LEFT, padx=4)
 
         self.btn_theme = ttk.Button(
             edit_bar,
-            text="☀️ Light Mode" if self.current_theme == "dark" else "🌙 Dark Mode",
+            text="Light Mode" if self.current_theme == "dark" else "Dark Mode",
             command=self.toggle_theme,
         )
         self.btn_theme.pack(side=tk.LEFT, padx=(8, 4))
@@ -969,7 +1002,7 @@ class AnnotationEditor(tk.Tk):
 
         self.btn_autolabel = ttk.Button(
             autolabel_bar,
-            text="✨ Auto-Label (A)",
+            text="Auto-Label (A)",
             style="Accent.TButton",
             command=self.on_autolabel_current
         )
@@ -977,21 +1010,21 @@ class AnnotationEditor(tk.Tk):
 
         self.btn_rectify_manual = ttk.Button(
             autolabel_bar,
-            text="📐 Rectify (Manual)",
+            text="Rectify (Manual)",
             command=self.on_rectify_manual
         )
         self.btn_rectify_manual.pack(side=tk.LEFT, padx=4)
 
         self.btn_batch_autolabel = ttk.Button(
             autolabel_bar,
-            text="⚡ Auto-Label All Unlabeled",
+            text="Auto-Label All Unlabeled",
             command=self.on_autolabel_all_unlabeled
         )
         self.btn_batch_autolabel.pack(side=tk.LEFT, padx=4)
 
         self.btn_autolabel_settings = ttk.Button(
             autolabel_bar,
-            text="⚙ Auto-Label Settings...",
+            text="Auto-Label Settings...",
             command=self.on_open_autolabel_settings
         )
         self.btn_autolabel_settings.pack(side=tk.LEFT, padx=4)
@@ -1021,7 +1054,7 @@ class AnnotationEditor(tk.Tk):
 
         btn_browse_copy = ttk.Button(
             export_bar,
-            text="📁 Browse Destination...",
+            text="Browse Destination...",
             command=self.on_browse_copy_dir
         )
         btn_browse_copy.pack(side=tk.LEFT, padx=(0, 10))
@@ -1163,16 +1196,16 @@ class AnnotationEditor(tk.Tk):
         btn_del_shot = ttk.Button(row_del, text="Delete Shot (Del)", style="Danger.TButton", command=self.on_delete_selected)
         btn_del_shot.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 3))
 
-        btn_del_all = ttk.Button(row_del, text="✕ Delete All Shots", style="Danger.TButton", command=self.on_clear_shots)
+        btn_del_all = ttk.Button(row_del, text="Delete All Shots", style="Danger.TButton", command=self.on_clear_shots)
         btn_del_all.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(3, 0))
 
         row_tools = ttk.Frame(side_actions)
         row_tools.pack(side=tk.TOP, fill=tk.X)
 
-        btn_eagle = ttk.Button(row_tools, text="🔍 Eagle Eye Gauge (E)", style="Accent.TButton", command=self.on_open_eagle_eye)
+        btn_eagle = ttk.Button(row_tools, text="Eagle Eye Gauge (E)", style="Accent.TButton", command=self.on_open_eagle_eye)
         btn_eagle.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 3))
 
-        btn_undo = ttk.Button(row_tools, text="↺ Undo (Ctrl+Z)", command=self.on_undo)
+        btn_undo = ttk.Button(row_tools, text="Undo (Ctrl+Z)", command=self.on_undo)
         btn_undo.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(3, 0))
 
         # 3. Bottom Status Bar
@@ -1499,7 +1532,7 @@ class AnnotationEditor(tk.Tk):
         src_name = src_path.name if src_path else entry.target_id
         self.current_json_path = None
         self.current_ann = None
-        self.lbl_target_info.config(text=f"{src_name} [UNLABELED • {idx + 1} / {total_shown}]")
+        self.lbl_target_info.config(text=f"{src_name} [UNLABELED | {idx + 1} / {total_shown}]")
 
         self.target_type = (self.target_type_override or self.target_type_var.get() or "B-2").upper()
         self.target_type_var.set(self.target_type)
@@ -1545,7 +1578,7 @@ class AnnotationEditor(tk.Tk):
             return
         if self.current_entry is not None and self.current_entry.is_labeled:
             status_fg = "#00ff78" if self.current_theme == "dark" else "#0b8043"
-            self.lbl_entry_status.config(text="Status: LABELED ✓", foreground=status_fg)
+            self.lbl_entry_status.config(text="Status: LABELED", foreground=status_fg)
         else:
             label_txt = "Status: UNLABELED (Raw Preview)" if not self.is_rectified else "Status: UNLABELED (Canonical)"
             self.lbl_entry_status.config(text=label_txt, foreground="#ff9100")
@@ -1725,8 +1758,8 @@ class AnnotationEditor(tk.Tk):
         except FileNotFoundError as exc:
             messagebox.showwarning(
                 "Checkpoint Not Found",
-                f"{exc}\n\nOpen '⚙ Auto-Label Settings...' to select a valid .pt checkpoint, "
-                "or click '📐 Rectify (Manual)' to place shots manually.",
+                f"{exc}\n\nOpen 'Auto-Label Settings...' to select a valid .pt checkpoint, "
+                "or click 'Rectify (Manual)' to place shots manually.",
                 parent=self,
             )
             self.lbl_status_msg.config(text="Auto-label aborted: checkpoint not found.")
@@ -1913,14 +1946,14 @@ class AnnotationEditor(tk.Tk):
         except FileNotFoundError as exc:
             messagebox.showwarning(
                 "Checkpoint Not Found",
-                f"{exc}\n\nOpen '⚙ Auto-Label Settings...' to select a valid .pt checkpoint.",
+                f"{exc}\n\nOpen 'Auto-Label Settings...' to select a valid .pt checkpoint.",
                 parent=self,
             )
             return
 
         self._batch_running = True
         self._batch_cancel_event.clear()
-        self.btn_batch_autolabel.config(text="⏹ Stop Batch")
+        self.btn_batch_autolabel.config(text="Stop Batch")
         self.lbl_batch_progress.config(text=f"Batch: 0/{len(unlabeled)}...")
 
         params = {
@@ -1999,7 +2032,7 @@ class AnnotationEditor(tk.Tk):
 
     def _on_batch_finished(self, completed: int, failed: int, total: int, cancelled: bool):
         self._batch_running = False
-        self.btn_batch_autolabel.config(text="⚡ Auto-Label All Unlabeled")
+        self.btn_batch_autolabel.config(text="Auto-Label All Unlabeled")
         state_word = "Stopped" if cancelled else "Done"
         err_part = f", {failed} failed" if failed else ""
         self.lbl_batch_progress.config(text=f"Batch {state_word}: {completed}/{total} saved{err_part}")
@@ -2326,7 +2359,7 @@ class AnnotationEditor(tk.Tk):
         if len(self.undo_stack) > 30:
             self.undo_stack.pop(0)
         self.is_modified = True
-        self.lbl_save_status.config(text="● Unsaved changes", foreground="#ff9100")
+        self.lbl_save_status.config(text="* Unsaved changes", foreground="#ff9100")
 
     def on_undo(self):
         if self.undo_stack:
@@ -2349,7 +2382,7 @@ class AnnotationEditor(tk.Tk):
             self.selected_shot_idx = min(self.selected_shot_idx or 0, max(0, len(self.shots) - 1)) if self.shots else None
             self.recalculate_scores()
             self.redraw_canvas()
-            self.lbl_save_status.config(text="↺ Undone", foreground="#00e5ff")
+            self.lbl_save_status.config(text="Undone", foreground="#00e5ff")
 
     def on_canvas_left_click(self, event):
         if not self.is_rectified:
@@ -2783,7 +2816,7 @@ class AnnotationEditor(tk.Tk):
                     copy_msg = f" | [!] Copy failed: {e}"
 
         self.is_modified = False
-        self.lbl_save_status.config(text=f"✓ Saved ({len(new_shots)} shots)", foreground="#00ff78")
+        self.lbl_save_status.config(text=f"Saved ({len(new_shots)} shots)", foreground="#00ff78")
         self.lbl_status_msg.config(text=f"Successfully saved '{self.current_json_path.name}' and updated review card.{copy_msg}")
 
 
