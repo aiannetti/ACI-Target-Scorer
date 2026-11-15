@@ -77,4 +77,12 @@ class HighResHeatmapUNet(nn.Module):
         d2 = self.dec3(torch.cat([self.up3(s3), s2], dim=1))
         d1 = self.dec2(torch.cat([self.up2(d2), s1], dim=1))
         d0 = self.dec1(torch.cat([self.up1(d1), s0], dim=1))
-        return self.final_head(d0)
+        logits = self.final_head[:-1](d0)
+        try:
+            autocast_on = torch.is_autocast_enabled(logits.device.type)
+        except TypeError:
+            autocast_on = torch.is_autocast_enabled()
+        if autocast_on:
+            with torch.amp.autocast(logits.device.type, enabled=False):
+                return torch.sigmoid(logits.float())
+        return torch.sigmoid(logits)

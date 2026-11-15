@@ -19,7 +19,7 @@ For deep dives into workflows, algorithms, metrology grounding, and APIs, consul
 * 🏗️ **[Technical Architecture & Developer Guide](file:///home/antho/target_scorer/docs/architecture_and_developer_guide.md):** System data flow diagrams (Mermaid / ASCII), physical metrology grounding, Harmonic 256-Grid Progressive Resizing, U-Net heatmap regression, Adaptive Wing Loss formulation, Fitzgibbon conic homography unwarping, 2D Taylor-series sub-pixel peak extraction, and `TargetAnnotation` schema.
 * 🪟 **[Windows Installation & Quickstart Guide](file:///home/antho/target_scorer/docs/windows_installation_and_quickstart_guide.md):** Complete beginner guide for Windows 10/11 users: Microsoft Store Python 3.11, fast package management via `uv`, 1-click global CLI installation (`uv tool`), NVIDIA CUDA setup, PowerShell execution policy configuration, and troubleshooting.
 * 🏛️ **[Target Scoring System Context Document](file:///home/antho/target_scorer/docs/target_scoring_system_context_document.md):** High-level system context, project mission, historical development milestones, Sprint roadmaps (Sprints 1–11), and domain metrology specifications.
-* 🧪 **[Verification & Testing Plan](file:///home/antho/target_scorer/docs/target_scoring_testing_plan.md):** Complete breakdown of all 10 unit/regression test modules (123 tests), metrology verification matrices, and benchmark criteria.
+* 🧪 **[Verification & Testing Plan](file:///home/antho/target_scorer/docs/target_scoring_testing_plan.md):** Complete breakdown of all 10 unit/regression test modules (130 tests), metrology verification matrices, and benchmark criteria.
 * 🖼️ **[Image Format & ML Ingestion Guide](file:///home/antho/target_scorer/docs/image_format_landscape_and_ml_ingestion_guide.md):** Reference for HEIC, ProRAW DNG, Android Ultra HDR, EXIF orientation, Display P3 CMS, and Raspberry Pi `Picamera2` memory buffers.
 
 ---
@@ -37,9 +37,9 @@ For deep dives into workflows, algorithms, metrology grounding, and APIs, consul
 * **Interactive Annotation Editor & Eagle Eye Scoring Gauge:**
   * Real-time desktop GUI (`target-scorer annotate`) for reviewing, adding, and adjusting bullet hole coordinates and bullseye origins.
   * **Unified Target Discovery:** Opens both existing `.json` annotations and unlabeled raw target photographs (`.jpg`, `.heic`, `.png`, `.dng`, `.webp`) with queue filtering (`All` / `Unlabeled` / `Labeled`).
-  * **In-Editor Auto-Labeling (`✨ Auto-Label (A)`):** Triggers instant in-memory rectification and U-Net prediction via cached [`AutoLabelPipeline`](file:///home/antho/target_scorer/src/target_scorer/data/autolabel.py), with full undo (`Ctrl+Z`) and atomic saving (`Ctrl+S`).
-  * **Manual Rectification & Batch Processing:** Includes `📐 Rectify (Manual)` for unassisted metric placement and `⚡ Auto-Label All Unlabeled` for background batch processing with live progress.
-  * Virtual high-magnification **Eagle Eye Loupe** ($6\times$ to $12\times$) with engraved caliber reticles (.22 LR, 9mm, .45 ACP), sub-pixel crosshairs, fine nudge pads, and automated line-break rulings.
+  * **In-Editor Auto-Labeling (`Auto-Label (A)`):** Triggers instant in-memory rectification and U-Net prediction via cached [`AutoLabelPipeline`](file:///home/antho/target_scorer/src/target_scorer/data/autolabel.py), with full undo (`Ctrl+Z`) and atomic saving (`Ctrl+S`).
+  * **Manual Rectification & Batch Processing:** Includes `Rectify (Manual)` for unassisted metric placement and `Auto-Label All Unlabeled` for background batch processing with live progress.
+  * Virtual high-magnification **Eagle Eye Loupe** ($6\times$ to $12\times$) with engraved caliber reticles (.22 LR, .32 S&W Long, 9mm / .38, .45 ACP), sub-pixel crosshairs, fine nudge pads, and automated line-break rulings.
 * **Assisted Auto-Labeling & Active Learning Flywheel:**
   * Model-assisted labeling tools available both in-GUI and headless CLI (`target-scorer autolabel`) generating canonical unwarped crops, standardized `TargetAnnotation` JSON annotations, and visual review cards with green crosshairs for rapid human review.
 * **Format-Agnostic Ingestion & Zero-Disk Edge Streaming:**
@@ -146,7 +146,7 @@ target_scorer/
 │   ├── image_format_landscape_and_ml_ingestion_guide.md # Cross-platform image formats & ingestion
 │   ├── interactive_annotation_editor_guide.md    # Desktop GUI & Eagle Eye loupe guide
 │   ├── target_scoring_system_context_document.md # High-level system context & sprint roadmap
-│   ├── target_scoring_testing_plan.md            # Verification matrices & 123-test suite breakdown
+│   ├── target_scoring_testing_plan.md            # Verification matrices & 130-test suite breakdown
 │   ├── windows_installation_and_quickstart_guide.md # Windows 10/11 novice installation & quickstart
 │   └── benchmarks/
 │       ├── visual_benchmark_inspection_report.md # Graphical benchmark verification report
@@ -195,15 +195,15 @@ target_scorer/
 │       └── real_targets/         # Sensitive competition target photos, canonical crops & JSON
 ├── tests/
 │   ├── __init__.py
-│   ├── test_annotation_editor.py    # GUI editor, Eagle Eye loupe, in-editor autolabel, & font resolution (18 tests)
+│   ├── test_annotation_editor.py    # GUI editor, Eagle Eye loupe, in-editor autolabel, & font resolution (20 tests)
 │   ├── test_benchmark_low_res.py    # Procedural 100-target statistical regression benchmark (1 test)
-│   ├── test_camera_angles.py        # Perspective rectification & tilt stress tests (7 tests)
+│   ├── test_camera_angles.py        # Perspective rectification, boundary tolerance, & U-Net AMP tests (9 tests)
 │   ├── test_canonical_loader.py     # Format-independent ingestion & in-memory buffer tests (8 tests)
 │   ├── test_cli.py                  # Unified CLI dispatcher & argument handling tests (5 tests)
 │   ├── test_colab_runner.py         # Colab CLI orchestration, chunked upload, & bundle tests (16 tests)
 │   ├── test_low_res_metrology.py    # Scoring compliance & defense-in-depth metrology tests (33 tests)
 │   ├── test_progressive_training.py # Dynamic spatial resizing & progressive curriculum tests (6 tests)
-│   ├── test_real_dataset.py         # Real dataset, schema, hybrid, & AutoLabelPipeline tests (21 tests)
+│   ├── test_real_dataset.py         # Real dataset, schema, hybrid, PII & AutoLabelPipeline tests (24 tests)
 │   └── test_synthetic_holes.py      # Procedural holes, 3-tone voids, & zero-heatmap markings tests (8 tests)
 ├── weights/
 │   ├── target_scoring_hrnet_1024_best.pt # Production competition model (0.335mm MRE)
@@ -361,16 +361,16 @@ To preserve competitor privacy and protect sensitive physical range target photo
 
 ## Automated Test Suite
 
-Run the full battery of **123 unit, GUI, progressive, metrology, and regression tests** across all **10 test modules**:
+Run the full battery of **130 unit, GUI, progressive, metrology, and regression tests** across all **10 test modules**:
 
 ```bash
-# Run complete test suite (123 tests across 10 modules):
+# Run complete test suite (130 tests across 10 modules):
 python -m unittest discover tests/ -v
 
-# Run Interactive Annotation Editor, in-editor auto-label, & cross-platform font tests (18 tests):
+# Run Interactive Annotation Editor, in-editor auto-label, & cross-platform font tests (20 tests):
 python -m unittest tests/test_annotation_editor.py -v
 
-# Run real dataset ingestion, schema, hybrid, & AutoLabelPipeline tests (21 tests):
+# Run real dataset ingestion, schema, hybrid, PII, & AutoLabelPipeline tests (24 tests):
 python -m unittest tests/test_real_dataset.py -v
 
 # Run metrology, inward scoring, and defense-in-depth filtering assertions (33 tests):

@@ -432,8 +432,7 @@ The interface implements the Fluent Design-inspired Sun Valley theme via [`sv_tt
 * **Dynamic Dark/Light Mode Toggling:** Supports instant theme switching at runtime via `Ctrl+T` or `F10` hotkeys, with automatic dynamic styling adaptation for nested widgets and custom canvas elements.
 * **Cross-Platform Sans-Serif UI Font Resolution:** On Windows, the editor uses native `Segoe UI`. On non-Windows operating systems (macOS and Linux/Unix), [`resolve_ui_font_family()`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py) inspects installed Tk font families and X11 aliases to select the closest TrueType humanist sans-serif family (e.g. `SF Pro Text` / `Helvetica Neue` on macOS; `Selawik`, `Carlito`, `Inter`, `Noto Sans`, `Liberation Sans`, or `DejaVu Sans` on Linux) while rejecting legacy bitmap `fixed` fallbacks. [`apply_ui_font_to_named_fonts()`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py) synchronizes the resolved family across both standard Tk named fonts (`TkDefaultFont`, `TkTextFont`, `TkHeadingFont`, etc.) and Sun Valley's `SunValley*Font` definitions.
 * **Modern Switch & Accent Styling:** Uses styled `Switch.TCheckbutton` toggles for overlay activation and `Accent.TButton` widgets for primary user callouts (e.g. Save, Auto-Label).
-* **High-DPI Display Support:** Dynamically queries screen DPI and applies proportional font scaling to maintain legibility on 4K/high-density monitors.
-* **Native Windows Integration:** Optimized for Windows 10/11 appearance and DPI scaling. For step-by-step Windows setup, Microsoft Store Python 3.11, and launch instructions, see the [Windows Installation & Quickstart Guide](file:///home/antho/target_scorer/docs/windows_installation_and_quickstart_guide.md).
+* **Native Windows Integration:** Optimized for Windows 10/11 Sun Valley appearance. For step-by-step Windows setup, Microsoft Store Python 3.11, and launch instructions, see the [Windows Installation & Quickstart Guide](file:///home/antho/target_scorer/docs/windows_installation_and_quickstart_guide.md).
 
 ### B. Coordinate Space Transformations
 The GUI manages three distinct coordinate systems:
@@ -451,7 +450,7 @@ The editor unifies labeled and unlabeled target workflows inside a single intera
 ### D. Asset Synchronization & Copy-On-Save Pipeline
 When verifying real-world target sets, the editor features an automated `copy-on-save` synchronization pipeline:
 * **User Path Expansion:** Automatically parses relative and tilde (`~`) paths (e.g., `~/private/data/real_targets` or `private/data/real_targets`).
-* **Multi-Format Raw Resolution:** Resolves raw smartphone photographs (`.jpg`, `.jpeg`, `.png`, `.heic`, `.dng`, `.nef`, `.cr2`) using embedded annotation metadata or cross-directory heuristic search.
+* **Multi-Format Raw Resolution:** Resolves raw smartphone photographs using `IMAGE_EXTENSIONS` (`.heic`, `.jpg`, `.jpeg`, `.png`, `.tif`, `.tiff`, `.dng`, `.webp`, `.bmp`) from embedded annotation metadata or cross-directory heuristic search.
 * **Strict Artifact Segregation:** Automatically synchronizes `canonical_1024/`, `annotations/`, and `raw/` subdirectories while strictly isolating burnt-in HUD review cards (`*_review.png`) to avoid polluting clean model inputs.
 * **Private Submodule Isolation:** Sensitive competition target sets and verified human annotations are mounted via the private Git submodule at `private/` (`data/real_targets/`), isolated from the public codebase and excluded from automatic codebase cloud bundles.
 

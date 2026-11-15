@@ -6,13 +6,14 @@ generating standard TargetAnnotation JSON files and visual verification review c
 
 import os
 from pathlib import Path
+import threading
 from typing import List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
 import torch
 
-from target_scorer.config import TargetRingsConfig
+from target_scorer.config import TargetRingsConfig, load_checkpoint_safely
 from target_scorer.data.schema import AnnotatedShot, TargetAnnotation
 from target_scorer.geometry.rectifier import TargetRectifier
 from target_scorer.metrology.peaks import extract_subpixel_peaks, filter_spurious_peaks
@@ -78,6 +79,7 @@ class AutoLabelPipeline:
         self._model: Optional[HighResHeatmapUNet] = None
         self._loaded_checkpoint: Optional[str] = None
         self._is_fresh_model: bool = False
+        self._lock = threading.Lock()
 
     @property
     def loaded_checkpoint(self) -> Optional[str]:
@@ -99,33 +101,31 @@ class AutoLabelPipeline:
         target_ckpt = self.checkpoint_path if checkpoint_path is _DEFAULT_SENTINEL else checkpoint_path
         resolved_ckpt = resolve_checkpoint_path(target_ckpt)
 
-        # Reuse existing model if resolved checkpoint matches
-        if self._model is not None:
-            if resolved_ckpt is not None and self._loaded_checkpoint == resolved_ckpt:
-                return self._model
-            if resolved_ckpt is None and self._is_fresh_model:
-                return self._model
+        with self._lock:
+            # Reuse existing model if resolved checkpoint matches
+            if self._model is not None:
+                if resolved_ckpt is not None and self._loaded_checkpoint == resolved_ckpt:
+                    return self._model
+                if resolved_ckpt is None and self._is_fresh_model:
+                    return self._model
 
-        # Instantiate model on device
-        model = HighResHeatmapUNet(in_channels=3, out_channels=2, base_dim=32).to(self.device)
+            # Instantiate model on device
+            model = HighResHeatmapUNet(in_channels=3, out_channels=2, base_dim=32).to(self.device)
 
-        if resolved_ckpt is not None:
-            try:
-                ckpt = torch.load(resolved_ckpt, map_location=self.device, weights_only=False)
-            except TypeError:
-                ckpt = torch.load(resolved_ckpt, map_location=self.device)
-            state_dict = ckpt.get("model_state_dict", ckpt)
-            model.load_state_dict(state_dict)
-            self._loaded_checkpoint = resolved_ckpt
-            self._is_fresh_model = False
-        else:
-            self._loaded_checkpoint = None
-            self._is_fresh_model = True
+            if resolved_ckpt is not None:
+                ckpt = load_checkpoint_safely(resolved_ckpt, map_location=self.device)
+                state_dict = ckpt.get("model_state_dict", ckpt)
+                model.load_state_dict(state_dict)
+                self._loaded_checkpoint = resolved_ckpt
+                self._is_fresh_model = False
+            else:
+                self._loaded_checkpoint = None
+                self._is_fresh_model = True
 
-        model.eval()
-        self._model = model
-        self.checkpoint_path = target_ckpt
-        return self._model
+            model.eval()
+            self._model = model
+            self.checkpoint_path = target_ckpt
+            return self._model
 
     def predict(
         self,
@@ -172,7 +172,7 @@ class AutoLabelPipeline:
         norm_tensor = ((tensor - torch.from_numpy(mean)) / torch.from_numpy(std)).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
-            pred_hmap = model(norm_tensor).squeeze(0).cpu().numpy()
+            pred_hmap = model(norm_tensor).squeeze(0).float().cpu().numpy()
 
         bullet_hmap = pred_hmap[0]
         bull_hmap = pred_hmap[1]
@@ -198,7 +198,7 @@ class AutoLabelPipeline:
 
         # 5. Extract bullseye center (TargetRectifier centers the bullseye at canvas_size / 2)
         c_mid = canvas_size / 2.0
-        search_radius = max(20.0, 8.0 * pixels_per_mm)
+        search_radius = max(14.0, 4.0 * pixels_per_mm)
         yy, xx = np.ogrid[:canvas_size, :canvas_size]
         central_mask = ((xx - c_mid) ** 2 + (yy - c_mid) ** 2) <= (search_radius ** 2)
         bull_hmap_central = bull_hmap.copy()
@@ -206,7 +206,10 @@ class AutoLabelPipeline:
 
         bull_peaks = extract_subpixel_peaks(bull_hmap_central, threshold=0.15, min_distance_px=10.0, max_peaks=1)
         if bull_peaks:
-            bull_center = (float(bull_peaks[0][0]), float(bull_peaks[0][1]))
+            bx_c, by_c = float(bull_peaks[0][0]), float(bull_peaks[0][1])
+            dev_px = float(np.hypot(bx_c - c_mid, by_c - c_mid))
+            max_dev_px = 5.0 * (pixels_per_mm / 4.0)
+            bull_center = (bx_c, by_c) if dev_px <= max_dev_px else (c_mid, c_mid)
         else:
             bull_center = (c_mid, c_mid)
 
@@ -222,7 +225,12 @@ class AutoLabelPipeline:
             if header_h > 0:
                 margin_mask[:header_h, :] = 0
 
-            blurred_crop = cv2.GaussianBlur(canonical_bgr, (45, 45), 25.0)
+            # Pixelate + strong blur so handwritten competitor metadata cannot be reconstructed
+            tiny_w = max(8, canvas_size // 24)
+            tiny_h = max(8, canvas_size // 24)
+            pixelated = cv2.resize(canonical_bgr, (tiny_w, tiny_h), interpolation=cv2.INTER_AREA)
+            pixelated = cv2.resize(pixelated, (canvas_size, canvas_size), interpolation=cv2.INTER_NEAREST)
+            blurred_crop = cv2.GaussianBlur(pixelated, (45, 45), 25.0)
             pii_zone = (margin_mask == 0)[:, :, np.newaxis]
             canonical_bgr = np.where(pii_zone, blurred_crop, canonical_bgr)
 
@@ -263,7 +271,7 @@ class AutoLabelPipeline:
             "source_blur": round(rect_result.blur_metric, 1),
             "source_tilt": round(rect_result.tilt_angle_deg, 1),
         }
-        if isinstance(image_source, (str, Path)) and str(image_source) != "-":
+        if not redact_pii and isinstance(image_source, (str, Path)) and str(image_source) != "-":
             metadata["source_image"] = str(Path(image_source).resolve())
 
         canonical_filename = f"{resolved_target_id}_canonical.png"
@@ -363,18 +371,6 @@ def render_review_card(
     x_count = annotation.x_count
     sf = canvas_size / 512.0
 
-    if redact_pii:
-        rings_cfg = TargetRingsConfig(target_type=target_type)
-        rings_table = rings_cfg.get_rings_table()
-        outer_margin_rad = int(round(rings_table[-1][1] * pixels_per_mm + 12.0 * (pixels_per_mm / 4.0)))
-        bc_int_x, bc_int_y = int(round(bull_center[0])), int(round(bull_center[1]))
-        header_h = max(28, int(round(bc_int_y - outer_margin_rad + 8)))
-        badge_y = max(18, int(round(header_h * 0.6)))
-        cv2.putText(
-            review_bgr, "[COMPETITOR REGISTRATION REDACTED]", (18, badge_y),
-            cv2.FONT_HERSHEY_SIMPLEX, max(0.32, 0.38 * sf), (130, 130, 140), 1, cv2.LINE_AA
-        )
-
     # Draw calibrated NRA scoring ring guide contours
     rings_cfg = TargetRingsConfig(target_type=target_type)
     rings_table = rings_cfg.get_rings_table()
@@ -411,6 +407,13 @@ def render_review_card(
     header = f"REVIEW: {target_id} ({target_type}) | Score: {total_score}{x_str} ({len(annotated_shots)} shots)"
     cv2.rectangle(review_bgr, (8, 8), (int(520 * sf), int(36 * sf)), (20, 20, 24), -1)
     cv2.putText(review_bgr, header, (16, int(26 * sf)), cv2.FONT_HERSHEY_SIMPLEX, 0.46 * sf, (0, 255, 200), 1, cv2.LINE_AA)
+
+    if redact_pii:
+        badge_y = int(52 * sf)
+        cv2.putText(
+            review_bgr, "[COMPETITOR REGISTRATION REDACTED]", (12, badge_y),
+            cv2.FONT_HERSHEY_SIMPLEX, max(0.34, 0.38 * sf), (130, 130, 140), 1, cv2.LINE_AA
+        )
 
     if output_path is not None:
         out_p = Path(output_path)

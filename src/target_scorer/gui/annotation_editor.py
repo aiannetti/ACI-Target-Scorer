@@ -738,8 +738,10 @@ class AnnotationEditor(tk.Tk):
         self.filter_var = tk.StringVar(value="All")
         self._autolabel_pipeline: Optional[Any] = None
         self._batch_running: bool = False
+        self._closing: bool = False
         self._batch_cancel_event = threading.Event()
         self._batch_thread: Optional[threading.Thread] = None
+        self.protocol("WM_DELETE_WINDOW", self.destroy)
 
         # Modes & Display Toggles
         self.edit_mode_var = tk.StringVar(value="shot")
@@ -766,6 +768,21 @@ class AnnotationEditor(tk.Tk):
                 default_dir = Path("datasets/real_targets")
             if default_dir.exists():
                 self.load_path(default_dir)
+
+    def destroy(self):
+        """Signals background workers to cancel before tearing down the Tk window."""
+        self._closing = True
+        self._batch_cancel_event.set()
+        super().destroy()
+
+    def _safe_after(self, callback, *args):
+        """Schedules a Tk callback only if the window is not closing."""
+        if getattr(self, "_closing", False):
+            return
+        try:
+            self.after(0, callback, *args)
+        except (tk.TclError, RuntimeError):
+            pass
 
     def _font(self, size: int, *styles: str) -> Tuple[Any, ...]:
         """Builds a Tk font tuple using the platform-resolved sans-serif UI family."""
@@ -1285,6 +1302,26 @@ class AnnotationEditor(tk.Tk):
         if hasattr(self, "lbl_counts"):
             self.lbl_counts.config(text=f"{total} targets ({labeled} labeled, {unlabeled} unlabeled)")
 
+    def _clear_active_target(self):
+        """Resets active target state, canvas, and shot table when no targets match."""
+        self.current_idx = -1
+        self.current_entry = None
+        self.current_json_path = None
+        self.current_ann = None
+        self.canonical_cv2 = None
+        self.canonical_pil = None
+        self.photo_img = None
+        self.shots = []
+        self.selected_shot_idx = None
+        self.undo_stack.clear()
+        self.is_modified = False
+        self.close_eagle_eye()
+        if hasattr(self, "lbl_save_status"):
+            self.lbl_save_status.config(text="")
+        self._update_entry_status_badge()
+        self.recalculate_scores()
+        self.redraw_canvas()
+
     def _apply_filter(self, preserve_entry: Optional[TargetEntry] = None):
         mode = self.filter_var.get() if hasattr(self, "filter_var") else "All"
         self.filtered_indices = []
@@ -1298,8 +1335,7 @@ class AnnotationEditor(tk.Tk):
         self._update_entry_counts_label()
 
         if not self.filtered_indices:
-            self.current_idx = -1
-            self.current_entry = None
+            self._clear_active_target()
             self.lbl_target_info.config(text=f"No {mode.lower()} targets found.")
             return
 
@@ -1724,6 +1760,9 @@ class AnnotationEditor(tk.Tk):
 
     def on_autolabel_current(self):
         """Runs model-assisted auto-labeling on the currently open target in memory."""
+        if self._batch_running:
+            messagebox.showinfo("Batch Running", "Wait for or stop the active batch auto-label run first.", parent=self)
+            return
         if self.current_entry is None and self.canonical_cv2 is None:
             messagebox.showinfo("Auto-Label", "Open an image or directory first.")
             return
@@ -1908,8 +1947,10 @@ class AnnotationEditor(tk.Tk):
         rev_p.parent.mkdir(parents=True, exist_ok=True)
 
         ann.image_filename = canon_p.name
-        if entry.image_path is not None and "source_image" not in ann.metadata:
+        if not redact_pii and entry.image_path is not None and "source_image" not in ann.metadata:
             ann.metadata["source_image"] = str(entry.image_path.resolve())
+        elif redact_pii:
+            ann.metadata.pop("source_image", None)
 
         if force_write_canonical or not canon_p.exists() or entry.canonical_path is None:
             cv2.imwrite(str(canon_p), canonical_bgr)
@@ -1928,6 +1969,16 @@ class AnnotationEditor(tk.Tk):
         self._refresh_json_files()
         return json_p, canon_p, rev_p
 
+    def _set_batch_controls_state(self, running: bool):
+        state = "disabled" if running else "normal"
+        for btn_attr in ("btn_autolabel", "btn_autolabel_settings"):
+            btn = getattr(self, btn_attr, None)
+            if btn is not None:
+                try:
+                    btn.configure(state=state)
+                except tk.TclError:
+                    pass
+
     def on_autolabel_all_unlabeled(self):
         """Runs batch auto-labeling over all unlabeled targets in a background thread."""
         if self._batch_running:
@@ -1935,9 +1986,12 @@ class AnnotationEditor(tk.Tk):
             self.lbl_batch_progress.config(text="Stopping batch...")
             return
 
-        unlabeled = [e for e in self.target_entries if not e.is_labeled]
+        unlabeled = [
+            e for e in self.target_entries
+            if not e.is_labeled and not (e is self.current_entry and self.is_modified)
+        ]
         if not unlabeled:
-            messagebox.showinfo("Batch Auto-Label", "All loaded targets are already labeled.")
+            messagebox.showinfo("Batch Auto-Label", "All eligible unlabeled targets are already labeled (or have unsaved manual edits).")
             return
 
         try:
@@ -1953,6 +2007,7 @@ class AnnotationEditor(tk.Tk):
 
         self._batch_running = True
         self._batch_cancel_event.clear()
+        self._set_batch_controls_state(True)
         self.btn_batch_autolabel.config(text="Stop Batch")
         self.lbl_batch_progress.config(text=f"Batch: 0/{len(unlabeled)}...")
 
@@ -1978,7 +2033,7 @@ class AnnotationEditor(tk.Tk):
         total = len(entries)
 
         for idx, entry in enumerate(entries, 1):
-            if self._batch_cancel_event.is_set():
+            if self._batch_cancel_event.is_set() or self._closing:
                 break
 
             src = entry.image_path or entry.canonical_path
@@ -2003,19 +2058,19 @@ class AnnotationEditor(tk.Tk):
                 canon_p.parent.mkdir(parents=True, exist_ok=True)
                 rev_p.parent.mkdir(parents=True, exist_ok=True)
                 ann.image_filename = canon_p.name
-                if entry.image_path is not None and "source_image" not in ann.metadata:
+                if not params["redact_pii"] and entry.image_path is not None and "source_image" not in ann.metadata:
                     ann.metadata["source_image"] = str(entry.image_path.resolve())
                 cv2.imwrite(str(canon_p), canon_bgr)
                 ann.to_json(json_p)
                 render_review_card(canonical_bgr=canon_bgr, annotation=ann, output_path=rev_p, redact_pii=params["redact_pii"])
                 completed += 1
-                self.after(0, self._on_batch_item_saved, entry, json_p, canon_p, idx, total)
+                self._safe_after(self._on_batch_item_saved, entry, json_p, canon_p, idx, total)
             except Exception:
                 failed += 1
-                self.after(0, self._on_batch_item_progress, idx, total)
+                self._safe_after(self._on_batch_item_progress, idx, total)
 
         cancelled = self._batch_cancel_event.is_set()
-        self.after(0, self._on_batch_finished, completed, failed, total, cancelled)
+        self._safe_after(self._on_batch_finished, completed, failed, total, cancelled)
 
     def _on_batch_item_saved(self, entry: TargetEntry, json_p: Path, canon_p: Path, idx: int, total: int):
         entry.json_path = json_p
@@ -2032,6 +2087,7 @@ class AnnotationEditor(tk.Tk):
 
     def _on_batch_finished(self, completed: int, failed: int, total: int, cancelled: bool):
         self._batch_running = False
+        self._set_batch_controls_state(False)
         self.btn_batch_autolabel.config(text="Auto-Label All Unlabeled")
         state_word = "Stopped" if cancelled else "Done"
         err_part = f", {failed} failed" if failed else ""
@@ -2039,7 +2095,10 @@ class AnnotationEditor(tk.Tk):
         self.lbl_status_msg.config(
             text=f"Batch auto-labeling {state_word.lower()}: {completed} targets saved to disk{err_part}."
         )
-        self._apply_filter(preserve_entry=self.current_entry)
+        if self.is_modified:
+            self._update_entry_counts_label()
+        else:
+            self._apply_filter(preserve_entry=self.current_entry)
 
     # =========================================================================
     # Coordinate Transforms & Canvas Rendering
@@ -2726,7 +2785,7 @@ class AnnotationEditor(tk.Tk):
                 )
             return
 
-        if not self.current_ann and not self.current_json_path:
+        if self.current_entry is None and not self.current_ann and not self.current_json_path:
             return
 
         # Build AnnotatedShot list
@@ -2743,7 +2802,12 @@ class AnnotationEditor(tk.Tk):
                 confidence=float(s.get("confidence", 1.0)),
             ))
 
-        base_target_id = self.current_ann.target_id if self.current_ann else self.current_json_path.stem
+        if self.current_ann is not None:
+            base_target_id = self.current_ann.target_id
+        elif self.current_entry is not None:
+            base_target_id = self.current_entry.target_id
+        else:
+            base_target_id = self.current_json_path.stem
         base_img_name = self.current_ann.image_filename if self.current_ann else f"{base_target_id}_canonical.png"
         base_version = self.current_ann.version if self.current_ann else "1.0"
         base_meta = dict(self.current_ann.metadata) if self.current_ann else {}

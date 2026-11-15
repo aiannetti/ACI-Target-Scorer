@@ -14,7 +14,7 @@ import cv2
 import numpy as np
 import torch
 
-from target_scorer.config import TargetConfig, TargetRingsConfig, TrainConfig
+from target_scorer.config import TargetConfig, TargetRingsConfig, load_checkpoint_safely
 from target_scorer.geometry.rectifier import RectificationResult, TargetRectifier
 from target_scorer.metrology.peaks import extract_subpixel_peaks, filter_spurious_peaks
 from target_scorer.metrology.scoring import GroupMetrics, ShotResult, score_target_group
@@ -109,7 +109,7 @@ def run_inference_and_scoring(
     print(f"  Target Type:        NRA {target_type} (50ft {'Slow' if target_type == 'B-2' else 'Timed/Rapid'})")
     print(f"  Device:             {device}")
     print(f"  Checkpoint:         {checkpoint_path}")
-    print(f"  Distance:           50.0 ft ({distance_yards:.2f} yards)")
+    print(f"  Distance:           {distance_yards * 3.0:.1f} ft ({distance_yards:.2f} yards)")
     print(f"  Target Shot Count:  {max_shots if max_shots is not None else 'All'} (Threshold: {peak_threshold})")
     print("=" * 72)
 
@@ -122,10 +122,7 @@ def run_inference_and_scoring(
         else:
             raise FileNotFoundError(f"Checkpoint '{checkpoint_path}' not found! Run training first or specify path.")
 
-    try:
-        checkpoint = torch.load(resolved_ckpt, map_location=device, weights_only=False)
-    except TypeError:
-        checkpoint = torch.load(resolved_ckpt, map_location=device)
+    checkpoint = load_checkpoint_safely(resolved_ckpt, map_location=device)
 
     config = checkpoint.get("config", None)
     if isinstance(config, dict):

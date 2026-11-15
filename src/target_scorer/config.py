@@ -2,8 +2,8 @@
 Configuration models and NRA target specifications.
 """
 
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
 import torch
 
 
@@ -60,6 +60,14 @@ import sys
 _main_mod = sys.modules.get("__main__")
 if _main_mod is not None and not hasattr(_main_mod, "TrainConfig"):
     setattr(_main_mod, "TrainConfig", TrainConfig)
+
+
+def load_checkpoint_safely(checkpoint_path: str, map_location: Any = "cpu") -> Any:
+    """Loads a PyTorch checkpoint with weights_only=True when supported."""
+    try:
+        return torch.load(checkpoint_path, map_location=map_location, weights_only=True)
+    except TypeError:
+        return torch.load(checkpoint_path, map_location=map_location)
 
 
 @dataclass

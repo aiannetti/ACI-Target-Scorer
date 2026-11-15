@@ -14,7 +14,7 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 
-from target_scorer.config import TrainConfig
+from target_scorer.config import TrainConfig, load_checkpoint_safely
 from target_scorer.data.hybrid_dataset import HybridTargetDataset
 from target_scorer.metrology.peaks import extract_subpixel_peaks
 from target_scorer.models.loss import AdaptiveWingLoss
@@ -294,10 +294,7 @@ def run_training(
     if initial_weights is not None:
         if os.path.exists(initial_weights):
             print(f"[+] Loading initial weights for fine-tuning from '{initial_weights}'...")
-            try:
-                ckpt = torch.load(initial_weights, map_location=config.device, weights_only=False)
-            except TypeError:
-                ckpt = torch.load(initial_weights, map_location=config.device)
+            ckpt = load_checkpoint_safely(initial_weights, map_location=config.device)
             state_dict = ckpt.get("model_state_dict", ckpt)
             model.load_state_dict(state_dict)
             print(f"[✓] Initial weights loaded successfully. Warm-starting from pre-trained state.")
@@ -478,10 +475,7 @@ def run_progressive_training(
     if initial_weights is not None:
         if os.path.exists(initial_weights):
             print(f"[+] Loading initial weights from '{initial_weights}'...", flush=True)
-            try:
-                ckpt = torch.load(initial_weights, map_location=device, weights_only=False)
-            except TypeError:
-                ckpt = torch.load(initial_weights, map_location=device)
+            ckpt = load_checkpoint_safely(initial_weights, map_location=device)
             state_dict = ckpt.get("model_state_dict", ckpt)
             model.load_state_dict(state_dict)
             print(f"[✓] Initial weights loaded successfully.", flush=True)

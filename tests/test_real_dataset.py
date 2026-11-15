@@ -15,8 +15,8 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from target_scorer.config import TrainConfig
-from target_scorer.data.autolabel import autolabel_target_image
+from target_scorer.config import TrainConfig, load_checkpoint_safely
+from target_scorer.data.autolabel import autolabel_target_image, render_review_card
 try:
     from target_scorer.data.autolabel import AutoLabelPipeline
 except ImportError:
@@ -603,6 +603,90 @@ class TestAutoLabeling(unittest.TestCase):
                 self.assertTrue(json2.exists())
                 self.assertTrue(rev2.exists())
                 self.assertEqual(ann2.target_id, "compat_test_pipeline")
+
+    def test_real_dataset_nonsquare_and_downscale_scaling(self):
+        """Verifies RealTargetDataset scales x/y independently and scales effective pixels_per_mm on resize."""
+        import cv2
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_p = Path(tmp_dir)
+            img_path = tmp_p / "nonsquare_canonical.png"
+            # Non-square source image (W=800, H=400) annotated at declared canvas_size=1024, px_per_mm=4.0
+            cv2.imwrite(str(img_path), np.full((400, 800, 3), 210, dtype=np.uint8))
+
+            ann = TargetAnnotation(
+                target_id="nonsquare",
+                image_filename=img_path.name,
+                target_type="B-2",
+                bullseye_center=(400.0, 200.0),
+                shots=[AnnotatedShot(id=1, center_x=200.0, center_y=100.0, score=9, is_x=False)],
+                canvas_size=1024,
+                pixels_per_mm=4.0,
+            )
+            ann.to_json(tmp_p / "nonsquare.json")
+
+            ds = RealTargetDataset(
+                data_dir=tmp_p,
+                config=TrainConfig(canvas_size=512, pixels_per_mm=2.0),
+                is_train=False,
+            )
+            self.assertEqual(len(ds), 1)
+            sample = ds[0]
+
+            # Shot heatmap (ch 0) peaks around (200 * 512/800, 100 * 512/400) = (128, 128)
+            # Bullseye heatmap (ch 1) peaks around (400 * 512/800, 200 * 512/400) = (256, 256)
+            shot_hm = sample["heatmap"][0].numpy()
+            bull_hm = sample["heatmap"][1].numpy()
+            by, bx = np.unravel_index(np.argmax(bull_hm), bull_hm.shape)
+            sy, sx = np.unravel_index(np.argmax(shot_hm), shot_hm.shape)
+            self.assertAlmostEqual(bx, 256, delta=1)
+            self.assertAlmostEqual(by, 256, delta=1)
+            self.assertAlmostEqual(sx, 128, delta=1)
+            self.assertAlmostEqual(sy, 128, delta=1)
+
+    def test_autolabel_redact_pii_metadata_and_banner(self):
+        """Verifies redact_pii=True omits source_image metadata and draws redaction badge below HUD bar."""
+        if AutoLabelPipeline is None:
+            self.skipTest("AutoLabelPipeline requires OpenCV")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            raw_path = Path(tmp_dir) / "competitor_john_doe_card.jpg"
+            import cv2
+            cv2.imwrite(str(raw_path), np.full((600, 600, 3), 220, dtype=np.uint8))
+
+            pipeline = AutoLabelPipeline(checkpoint_path=None, device_str="cpu")
+            mock_model = MagicMock()
+            mock_model.return_value = torch.zeros((1, 2, 256, 256), dtype=torch.float32)
+            pipeline.ensure_model_loaded = MagicMock(return_value=mock_model)
+
+            ann, canon = pipeline.predict(
+                image_source=raw_path,
+                target_type="B-2",
+                canvas_size=256,
+                pixels_per_mm=2.0,
+                redact_pii=True,
+                target_id="redacted_test",
+            )
+            self.assertNotIn("source_image", ann.metadata)
+            self.assertTrue(ann.metadata.get("redact_pii"))
+
+            card_redacted = render_review_card(canon, ann, redact_pii=True)
+            card_plain = render_review_card(canon, ann, redact_pii=False)
+            # In a 256x256 card (sf=0.5), HUD rectangle ends at y=18 and badge baseline is y=26;
+            # verify pixels changed below the HUD bar (y in 19..28) for the redaction badge.
+            diff_below_hud = np.abs(card_redacted[19:28, :, :].astype(np.int16) - card_plain[19:28, :, :].astype(np.int16))
+            self.assertGreater(int(np.sum(diff_below_hud > 20)), 20, "Redaction badge was overwritten or not drawn below HUD bar")
+
+    def test_load_checkpoint_safely_with_train_config(self):
+        """Verifies load_checkpoint_safely loads TrainConfig and asdict checkpoints under weights_only=True."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            ckpt_path = Path(tmp_dir) / "safe_ckpt.pt"
+            cfg = TrainConfig(canvas_size=256, epochs=2, heatmap_sigma_px=1.8)
+            torch.save({"epoch": 1, "config": cfg, "model_state_dict": {"w": torch.ones(2)}}, ckpt_path)
+            loaded = load_checkpoint_safely(ckpt_path, map_location="cpu")
+            self.assertEqual(loaded["epoch"], 1)
+            self.assertEqual(loaded["config"].canvas_size, 256)
+            self.assertEqual(loaded["config"].heatmap_sigma_px, 1.8)
 
 
 if __name__ == "__main__":

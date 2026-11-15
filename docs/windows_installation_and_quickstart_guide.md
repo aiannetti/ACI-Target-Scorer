@@ -145,7 +145,7 @@ This pathway installs `target-scorer` as an isolated Windows application using `
 
 ### Pathway B: Full Development & Training Setup (Power Users)
 
-Follow this pathway to clone the source code, inspect models, run the 123-test automated test suite across 10 modules, or perform GPU-accelerated neural training.
+Follow this pathway to clone the source code, inspect models, run the 130-test automated test suite across 10 modules, or perform GPU-accelerated neural training.
 
 #### Step 1: Navigate to Documents and Clone Repository
 ```powershell
@@ -240,11 +240,11 @@ python -c "import torch; print('CUDA Available:', torch.cuda.is_available(), '| 
      Once activated, `target-scorer` is directly available.
 
 ### Issue 4: Running the Automated Test Battery
-To ensure everything is working properly on your Windows machine, run the complete 123-test suite (across 10 test modules):
+To ensure everything is working properly on your Windows machine, run the complete 130-test suite (across 10 test modules):
 ```powershell
 python -m unittest discover tests -v
 ```
-All 123 tests should pass with an `OK` summary.
+All 130 tests should pass with an `OK` summary.
 
 ---
 

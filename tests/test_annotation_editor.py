@@ -20,6 +20,15 @@ class TestAnnotationEditor(unittest.TestCase):
     """Headless tests for AnnotationEditor logic and persistence."""
 
     def setUp(self):
+        if self._testMethodName != "test_render_review_card_standalone":
+            import tkinter as tk
+            try:
+                _probe = tk.Tk()
+                _probe.withdraw()
+                _probe.destroy()
+            except tk.TclError as exc:
+                self.skipTest(f"Tk display unavailable for GUI test: {exc}")
+
         self.tmp_dir = tempfile.mkdtemp()
         self.tmp_p = Path(self.tmp_dir)
 
@@ -871,6 +880,56 @@ class TestAnnotationEditor(unittest.TestCase):
                 assert_no_button_clipping(dlg, "AutoLabelSettingsDialog")
             finally:
                 dlg.destroy()
+        finally:
+            app.destroy()
+
+    def test_save_standalone_unlabeled_canonical_and_empty_filter_cleanup(self):
+        """Verifies saving an unlabeled *_canonical.png and clearing stale UI state on empty filter results."""
+        import cv2
+
+        standalone_dir = self.tmp_p / "standalone"
+        standalone_dir.mkdir()
+        canon_path = standalone_dir / "range_day_01_canonical.png"
+        img = np.full((1024, 1024, 3), 235, dtype=np.uint8)
+        cv2.circle(img, (512, 512), 155, (20, 20, 20), -1)
+        cv2.imwrite(str(canon_path), img)
+
+        app = AnnotationEditor(target_dir_or_file=canon_path)
+        try:
+            self.assertIsNotNone(app.current_entry)
+            self.assertIsNone(app.current_ann)
+            self.assertIsNone(app.current_json_path)
+
+            # Annotate one shot on the unlabeled standalone canonical target and save
+            app.shots.append({"id": 1, "x": 512.0, "y": 512.0, "score": 10, "is_x": True})
+            app.recalculate_scores()
+            app.is_modified = True
+            app.on_save()
+
+            expected_json = standalone_dir / "range_day_01.json"
+            expected_rev = standalone_dir / "range_day_01_review.png"
+            self.assertTrue(expected_json.exists(), "Saving unlabeled canonical should create <target_id>.json")
+            self.assertTrue(expected_rev.exists(), "Saving unlabeled canonical should create <target_id>_review.png")
+            self.assertEqual(app.current_json_path, expected_json)
+            self.assertTrue(app.current_entry.is_labeled)
+            self.assertFalse(app.is_modified)
+
+            loaded = TargetAnnotation.from_json(expected_json)
+            self.assertEqual(loaded.target_id, "range_day_01")
+            self.assertEqual(len(loaded.shots), 1)
+
+            # Now filter to Unlabeled (0 matches): stale target state must be completely cleared
+            app.filter_var.set("Unlabeled")
+            app.on_filter_changed()
+            self.assertEqual(len(app.filtered_indices), 0)
+            self.assertIsNone(app.current_entry)
+            self.assertIsNone(app.current_ann)
+            self.assertIsNone(app.current_json_path)
+            self.assertEqual(app.shots, [])
+            self.assertIsNone(app.canonical_cv2)
+            self.assertIsNone(app.canonical_pil)
+            self.assertIsNone(app.photo_img)
+            self.assertEqual(len(app.tree_shots.get_children()), 0)
         finally:
             app.destroy()
 

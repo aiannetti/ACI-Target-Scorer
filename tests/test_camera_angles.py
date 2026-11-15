@@ -181,6 +181,37 @@ class TestMetrologyAndScoring(unittest.TestCase):
         self.assertAlmostEqual(metrics.extreme_spread_mm, 20.0, delta=0.01)
         self.assertGreater(metrics.extreme_spread_moa, 0.0)
 
+    def test_nra_inward_scoring_boundary_epsilon(self):
+        """Verifies exact floating-point boundary ties break inward in the shooter's favor."""
+        bull_center = (128.0, 128.0)
+        bullet_r_mm = self.bullet_diameter_mm / 2.0
+        # Inject tiny float overshoot (+5e-7 mm) inside the 1e-6 tolerance at the 10-ring edge
+        boundary_dist_mm = self.cfg_b2.b2_10_mm + bullet_r_mm + 5e-7
+        shot_px = 128.0 + boundary_dist_mm * self.pixels_per_mm
+        results, _ = score_target_group(
+            shot_peaks=[(shot_px, 128.0, 0.99)],
+            bullseye_peak=bull_center,
+            pixels_per_mm=self.pixels_per_mm,
+            rings_cfg=self.cfg_b2,
+            bullet_diameter_mm=self.bullet_diameter_mm,
+        )
+        self.assertEqual(results[0].score_value, 10)
+
+    def test_unet_autocast_fp32_sigmoid_output(self):
+        """Verifies HighResHeatmapUNet returns finite FP32 probabilities under AMP autocast."""
+        import torch
+        from target_scorer.models.unet import HighResHeatmapUNet
+
+        model = HighResHeatmapUNet(in_channels=3, out_channels=2, base_dim=16)
+        model.eval()
+        x = torch.randn(1, 3, 64, 64, dtype=torch.float32)
+        with torch.no_grad(), torch.amp.autocast("cpu", dtype=torch.bfloat16):
+            out = model(x)
+        self.assertEqual(out.dtype, torch.float32)
+        self.assertTrue(torch.isfinite(out).all())
+        self.assertGreaterEqual(float(out.min()), 0.0)
+        self.assertLessEqual(float(out.max()), 1.0)
+
 
 if __name__ == "__main__":
     unittest.main()

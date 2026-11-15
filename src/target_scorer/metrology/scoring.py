@@ -95,7 +95,7 @@ def score_target_group(
         is_inner_x = False
 
         for label, ring_radius_mm, score_val in rings_table:
-            if effective_gauge_dist_mm <= ring_radius_mm:
+            if effective_gauge_dist_mm <= ring_radius_mm + 1e-6:
                 assigned_label = label
                 assigned_score = score_val
                 if label == "X":

@@ -379,7 +379,7 @@ target-scorer autolabel [OPTIONS]
 
 ## 8. `target-scorer annotate`
 
-Launches the interactive desktop GUI for reviewing, adding, moving, and deleting bullet hole markers with real-time NRA inward scoring. Features unified target discovery (opening both labeled `.json` files and unlabeled raw target photos), in-editor neural auto-labeling (`✨ Auto-Label (A)`), manual metric rectification, batch auto-labeling, NRA ring guides, caliber adjustment, and the optical **Eagle Eye Scoring Gauge**.
+Launches the interactive desktop GUI for reviewing, adding, moving, and deleting bullet hole markers with real-time NRA inward scoring. Features unified target discovery (opening both labeled `.json` files and unlabeled raw target photos), in-editor neural auto-labeling (`Auto-Label (A)`), manual metric rectification, batch auto-labeling, NRA ring guides, caliber adjustment (`.22 LR`, `.32 S&W Long`, `9mm / .38`, `.45 ACP`), and the optical **Eagle Eye Scoring Gauge**.
 
 Source: [`src/target_scorer/gui/annotation_editor.py`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py)
 
@@ -404,10 +404,10 @@ target-scorer annotate [PATH] [OPTIONS]
 * **Unified Target Discovery ([`TargetEntry`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py)):** Automatically indexes both `.json` files and raw/canonical images (`.jpg`, `.jpeg`, `.png`, `.heic`, `.tiff`, `.tif`, `.dng`, `.webp`, `.bmp`), excluding review cards (`*_review.png`) and deduplicating image/JSON pairs.
 * **Target Queue Filter & Type Selection:** Filter the active target list by `All`, `Unlabeled`, or `Labeled`, and select the active NRA target type (`B-2` or `B-3`) directly from the toolbar dropdown.
 * **Raw Photo Preview:** Displays orientation-corrected raw target photos with an `[UNLABELED]` status badge before processing.
-* **`✨ Auto-Label (A)` (Shortcut `A`):** Rectifies and runs in-memory neural inference via cached [`AutoLabelPipeline`](file:///home/antho/target_scorer/src/target_scorer/data/autolabel.py), populating detected shots and bullseye center onto the canvas and HUD. Fully reversible via `Ctrl+Z` (`Undo`), and saved to disk via `Ctrl+S`.
-* **`📐 Rectify (Manual)`:** Rectifies raw target photos to the $1024 \times 1024$ canonical metric grid with 0 shots for pure manual placement.
-* **`⚡ Auto-Label All Unlabeled`:** Background worker thread that sequentially processes and auto-saves all unlabeled images in the queue, updating the inline toolbar progress indicator (`Batch: X/Y saved`) and toggling to `⏹ Stop Batch` for graceful cancellation.
-* **`⚙ Auto-Label Settings...` ([`AutoLabelSettingsDialog`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py)):** Modal dialog to configure model checkpoint `.pt`, peak confidence threshold, max shots per target, and competitor PII redaction.
+* **`Auto-Label (A)` (Shortcut `A`):** Rectifies and runs in-memory neural inference via cached [`AutoLabelPipeline`](file:///home/antho/target_scorer/src/target_scorer/data/autolabel.py), populating detected shots and bullseye center onto the canvas and HUD. Fully reversible via `Ctrl+Z` (`Undo`), and saved to disk via `Ctrl+S`.
+* **`Rectify (Manual)`:** Rectifies raw target photos to the $1024 \times 1024$ canonical metric grid with 0 shots for pure manual placement.
+* **`Auto-Label All Unlabeled`:** Background worker thread that sequentially processes and auto-saves all unlabeled images in the queue, updating the inline toolbar progress indicator (`Batch: X/Y saved`) and toggling to `Stop Batch` for graceful cancellation.
+* **`Auto-Label Settings...` ([`AutoLabelSettingsDialog`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py)):** Modal dialog to configure model checkpoint `.pt`, peak confidence threshold, max shots per target, and competitor PII redaction.
 * **Cross-Platform Sans-Serif Typography:** On non-Windows operating systems (macOS and Linux), [`resolve_ui_font_family`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py) and [`apply_ui_font_to_named_fonts`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py) automatically resolve installed humanist sans-serif TrueType fonts matching Windows `Segoe UI` across Tk and Sun Valley (`sv-ttk`) named fonts.
 
 ---

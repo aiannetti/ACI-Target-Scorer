@@ -144,20 +144,25 @@ class RealTargetDataset(Dataset):
         img_bgr = canonicalize_image(img_path, target_format="BGR")
         ann = TargetAnnotation.from_json(ann_path)
 
-        # Ensure canvas matches expected config dimensions
-        if img_bgr.shape[0] != self.config.canvas_size or img_bgr.shape[1] != self.config.canvas_size:
-            scale_factor = self.config.canvas_size / float(img_bgr.shape[0])
+        # Ensure canvas matches expected config dimensions using independent axis scaling
+        ann_canvas = float(ann.canvas_size) if ann.canvas_size else float(img_bgr.shape[0])
+        ann_px_per_mm = float(ann.pixels_per_mm) if ann.pixels_per_mm else float(self.config.pixels_per_mm)
+        src_h, src_w = img_bgr.shape[:2]
+        if src_h != self.config.canvas_size or src_w != self.config.canvas_size:
+            scale_x = self.config.canvas_size / float(src_w)
+            scale_y = self.config.canvas_size / float(src_h)
             img_bgr = cv2.resize(
                 img_bgr,
                 (self.config.canvas_size, self.config.canvas_size),
                 interpolation=cv2.INTER_AREA
             )
-            bull_x = ann.bullseye_center[0] * scale_factor
-            bull_y = ann.bullseye_center[1] * scale_factor
-            shot_coords = [[s.center_x * scale_factor, s.center_y * scale_factor] for s in ann.shots]
+            bull_x = ann.bullseye_center[0] * scale_x
+            bull_y = ann.bullseye_center[1] * scale_y
+            shot_coords = [[s.center_x * scale_x, s.center_y * scale_y] for s in ann.shots]
         else:
             bull_x, bull_y = ann.bullseye_center
             shot_coords = [[s.center_x, s.center_y] for s in ann.shots]
+        eff_pixels_per_mm = ann_px_per_mm * (self.config.canvas_size / ann_canvas)
 
         # 2. Apply training augmentations (rotations, shadows, lighting, JPEG compression)
         if self.is_train:
@@ -184,7 +189,7 @@ class RealTargetDataset(Dataset):
             bull_x, bull_y = new_bull_x, new_bull_y
 
             transformed_shots = []
-            margin = max(4.0, 1.5 * self.config.pixels_per_mm)
+            margin = max(4.0, 1.5 * eff_pixels_per_mm)
             for sx, sy in shot_coords:
                 tx = float(M[0, 0] * sx + M[0, 1] * sy + M[0, 2])
                 ty = float(M[1, 0] * sx + M[1, 1] * sy + M[1, 2])
@@ -219,7 +224,7 @@ class RealTargetDataset(Dataset):
         # 3. Render continuous 2D sub-pixel Gaussian regression heatmaps
         gen_cfg = TargetConfig(
             canvas_size=self.config.canvas_size,
-            pixels_per_mm=self.config.pixels_per_mm,
+            pixels_per_mm=eff_pixels_per_mm,
             heatmap_sigma_px=self.config.heatmap_sigma_px,
             target_type=ann.target_type,
         )

@@ -104,7 +104,7 @@ Bullet Radius = 5.69 mm / 2 = 2.845 mm
 
 ---
 
-### Module 4: Real Target Datasets, Schema, & Active Learning (`tests/test_real_dataset.py` — 21 Tests)
+### Module 4: Real Target Datasets, Schema, & Active Learning (`tests/test_real_dataset.py` — 24 Tests)
 
 *Objective:* Verify `TargetAnnotation` JSON schemas, `RealTargetDataset` Gaussian heatmaps and augmentations, `HybridTargetDataset` blending (Options A & B), `autolabel_target_image`, and cached in-memory `AutoLabelPipeline` predictions.
 
@@ -119,7 +119,7 @@ Bullet Radius = 5.69 mm / 2 = 2.845 mm
 
 ---
 
-### Module 5: Interactive Annotation Editor & Cross-Platform UI (`tests/test_annotation_editor.py` — 18 Tests)
+### Module 5: Interactive Annotation Editor & Cross-Platform UI (`tests/test_annotation_editor.py` — 20 Tests)
 
 *Objective:* Verify headless `AnnotationEditor` persistence, Eagle Eye loupe inspection, Sun Valley theme toggling, unified `TargetEntry` discovery, in-editor single & batch auto-labeling, manual rectification, and cross-platform UI font resolution.
 
@@ -132,20 +132,20 @@ Bullet Radius = 5.69 mm / 2 = 2.845 mm
 
 ---
 
-### Module 6: Additional Automated Test Modules (54 Tests across 6 Modules)
+### Module 6: Additional Automated Test Modules (86 Tests across 8 Modules)
 
 | Test Module | Test Count | Scope & Coverage |
 | :--- | :---: | :--- |
 | `tests/test_low_res_metrology.py` | **33** | NRA B-2/B-3 inward scoring, Extreme Spread/Mean Radius/MOA, 2D Taylor sub-pixel peaks, defense-in-depth spurious peak filtering, visualization channel normalization |
 | `tests/test_colab_runner.py` | **16** | `colab_runner.py` binary resolution, usage parsing, session management, chunked upload, progressive stage parsing, and `create_colab_bundle.py` exclusions |
+| `tests/test_camera_angles.py` | **9** | Perspective tilt recovery, roll invariance, specular glare inpainting, Laplacian blur gate, NRA ring boundary tolerance, U-Net AMP FP32 sigmoid output |
 | `tests/test_canonical_loader.py` | **8** | Format-independent ingestion (HEIC, RAW, TIFF, PNG, JPEG, WebP, BMP), bytes/BytesIO, NumPy buffers, EXIF 1–8, Display P3 CMS |
 | `tests/test_synthetic_holes.py` | **8** | 3-tone bullet void penetration (`scanner_white`, `dark_void`, `tan_backer`), ragged holes, keyholes, 4-zone placement, zero-heatmap markings/seals |
-| `tests/test_camera_angles.py` | **7** | Perspective tilt recovery, roll invariance, specular glare inpainting, Laplacian blur gate |
 | `tests/test_progressive_training.py` | **6** | Harmonic 256-Grid curriculum & dynamic spatial resizing ($256 \to 512 \to 768 \to 1024$) preserving optimizer momentum |
 | `tests/test_cli.py` | **5** | Unified `target-scorer` CLI dispatcher routing and argument parsing across subcommands |
 | `tests/test_benchmark_low_res.py` | **1** | 100-target procedural statistical regression benchmark |
 
-**Full Test Suite Summary:** **123 test methods across 10 test modules** (`python -m unittest discover tests/ -v`).
+**Full Test Suite Summary:** **130 test methods across 10 test modules** (`python -m unittest discover tests/ -v`).
 
 ---
 
@@ -156,7 +156,7 @@ Bullet Radius = 5.69 mm / 2 = 2.845 mm
 
 ### Phase 2: Execute Unit & Mathematical Assertions [Completed ✓]
 - 33 metrology assertions passing in `tests/test_low_res_metrology.py`.
-- 7 camera angle assertions passing in `tests/test_camera_angles.py`.
+- 9 camera angle, ring-boundary, and U-Net AMP assertions passing in `tests/test_camera_angles.py`.
 
 ### Phase 3: Benchmark Low-Res Statistical Performance [Completed ✓]
 - 100 procedural targets at $256 \times 256$ evaluated (`tests/test_benchmark_low_res.py`):
@@ -189,8 +189,8 @@ Bullet Radius = 5.69 mm / 2 = 2.845 mm
 - `RealTargetDataset` with continuous 2-channel 2D Gaussian heatmaps and photometric domain augmentations.
 - `HybridTargetDataset` with balanced sampling (Option A hybrid and Option B pure real fine-tuning).
 - `target-scorer autolabel` CLI and `AutoLabelPipeline` for automated candidate proposal and human-in-the-loop review cards.
-- 21 unit tests in `tests/test_real_dataset.py`.
+- 24 unit tests in `tests/test_real_dataset.py`.
 
 ### Phase 9: Interactive GUI, In-Editor Auto-Labeling, & Cross-Platform UI Polish [Completed ✓]
 - Unified `TargetEntry` discovery, `All`/`Unlabeled`/`Labeled` filtering, `AutoLabelSettingsDialog`, in-editor single & background-batch auto-labeling, manual rectification, and cross-platform sans-serif UI font resolution (`resolve_ui_font_family`, `apply_ui_font_to_named_fonts`).
-- 18 unit tests in `tests/test_annotation_editor.py` (**123 total test methods across 10 modules**).
+- 20 unit tests in `tests/test_annotation_editor.py` (**130 total test methods across 10 modules**).

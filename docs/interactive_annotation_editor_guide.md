@@ -57,39 +57,41 @@ The editor natively discovers both labeled and unlabeled targets within the open
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ [📁 Open Dir] [🖼️ Open Img] [◀ Prev] target_005.jpg [1/18] [UNLABELED] [Next ▶] | Filter: [All ▾] | Target: [B-3 ▾] | Mode: (•) Shots ( ) Bull   │
-│ Caliber: [.22 LR] | [✨ Auto-Label (A)] [📐 Rectify] [⚡ Auto-Label All] [⚙ Settings] | [☀️/🌙] [💾 Save (Ctrl+S)] [↺ Revert] [✕ Clear]         │
+│ [Open Dir...] [Open File...] [< Prev (P)] target_005.jpg [1 / 18] [Next (N) >] | Filter: [All v] (18 targets)                                   │
+│ Mode: (*) Shots (Click / Drag) ( ) Bullseye Center | Caliber: [.22 LR (5.69 mm) v] | [Clear Shots] [Revert] [Save (Ctrl+S)] [Light Mode]         │
+│ Target Type: [B-3 v] [Auto-Label (A)] [Rectify (Manual)] [Auto-Label All Unlabeled] [Auto-Label Settings...] Batch: 0/18...                      │
 ├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ [✓] Copy on Save to directory: [private/data/real_targets                                                      ] [📁 Browse...] (copies all assets)│
+│ [v] Copy on Save to directory: [private/data/real_targets                                                      ] [Browse Destination...]         │
 ├────────────────────────────────────────────────────────────────────────────────────────┬─────────────────────────────────────────────────────────┤
 │ [Fit] [100%] [Zoom +] [Zoom -] 150% [Switch] Rings [Switch] Spread [Switch] Badges     │ NRA TARGET SPECIFICATION                                │
-│                                                                                        │ Target: NRA B-3 (50ft Rapid)                            │
-│                                                                                        │ Scale: 4.00 px/mm | 1024x1024                           │
+│                                                                                        │ Target: NRA B-3 (50ft Timed & Rapid)                    │
+│                                                                                        │ Scale: 4.00 px/mm | Canvas: 1024x1024                   │
 │                                                                                        ├─────────────────────────────────────────────────────────┤
-│                                                                                        │ SCORE: 98 - 4X / 100                                    │
+│                                                                                        │ SCORE: 98 / 100                                         │
 │                     INTERACTIVE TARGET CANVAS                                          │ Shots: 10 | X-Count: 4                                  │
 │                                                                                        │ Extreme Spread: 24.32 mm                                │
 │                - Smooth Pan & Zoom (20% - 1200%)                                       │ Mean Radius:     8.14 mm                                │
 │                - Orientation-corrected raw photo preview for unlabeled targets         ├─────────────────────────────────────────────────────────┤
 │                - Instant in-memory auto-labeling via shortcut 'A'                      │ SHOT IMPACTS                               [Re-number]  │
-│                - Drag to reposition shot markers                                       │ #  | Score | X? | Radius (mm) | Coordinates (px)       │
-│                - Click to stamp new bullet impacts                                     │ #1 |  10   | X  |        4.20 | (512.4, 508.2)         │
-│                - Double-click shot to launch Eagle Eye Loupe                           │ #2 |  10   |    |        8.91 | (532.1, 485.6)         │
+│                - Drag to reposition shot markers                                       │ #  | Score | X? | Radius (mm) | Coordinates (px)        │
+│                - Click to stamp new bullet impacts                                     │ #1 |  10   | X  |        4.20 | (512.4, 508.2)          │
+│                - Double-click shot to launch Eagle Eye Loupe                           │ #2 |  10   |    |        8.91 | (532.1, 485.6)          │
 │                                                                                        ├─────────────────────────────────────────────────────────┤
-│                                                                                        │ [Delete Shot (Del)] [✕ Delete All Shots]                │
-│                                                                                        │ [🔍 Eagle Eye Gauge (E)] [↺ Undo (Ctrl+Z)]              │
+│                                                                                        │ [Delete Selected Shot (Del)] [Delete All Shots]         │
+│                                                                                        │ [Eagle Eye Scoring Gauge (E)] [Undo (Ctrl+Z)]           │
 ├────────────────────────────────────────────────────────────────────────────────────────┴─────────────────────────────────────────────────────────┤
-│ Cursor: X=512.4, Y=498.2 (r=3.8 mm) | Ready. Click canvas to add shots | Press 'A' to Auto-Label | Press 'E' for Eagle Eye Loupe                       │
+│ Cursor: X=512.4, Y=498.2 (r=3.8 mm) | Ready. Click canvas to add shots | Press 'A' to Auto-Label | 'E' for Eagle Eye                             │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-The application is themed with the modern **Sun Valley (`sv-ttk`)** Fluent Design system (rounded buttons, sleek high-DPI sprites, sliding switch toggles, and dynamic dark/light mode), with cross-platform typography resolved by [`resolve_ui_font_family`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py) and [`apply_ui_font_to_named_fonts`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py) (`Segoe UI` on Windows, and matching TrueType humanist sans-serif fonts on macOS and Linux to avoid legacy bitmap `fixed` fonts):
-1. **Top Control Toolbar:** Dataset directory/image pickers, sequential navigation, editing mode, caliber dropdown, clear/revert/save actions, and theme toggle.
-2. **Auto-Label & Filter Bar:** Target queue filter (`All` / `Unlabeled` / `Labeled`), labeled/unlabeled counters, NRA target type selector (`B-2` / `B-3`), in-editor auto-label actions, settings button, and inline batch progress readout.
-3. **Export / Copy on Save Bar:** Quick directory destination input, browse dialog, and switch toggle to automatically duplicate verified raw/canonical/annotation pairs on save.
-4. **Interactive Canvas (Center):** High-framerate rendering of the unwarped canonical target card (or raw orientation-corrected photo preview) with calibrated visual overlays and sliding switch controls.
-5. **Metrology HUD & Shot Table (Right):** Elevated `Card.TFrame` target specification card (with `UNLABELED` / `LABELED` status indicator), ballistic group statistics (Score, Extreme Spread, Mean Radius), and interactive shot table. Selecting any row highlights the corresponding shot on canvas.
-6. **Bottom Status Bar:** Live cursor coordinates (pixel space and millimeter radial distance from bullseye) and workflow state messages.
+The application is themed with the modern **Sun Valley (`sv-ttk`)** Fluent Design system (rounded buttons, sliding switch toggles, and dynamic dark/light mode), with cross-platform typography resolved by [`resolve_ui_font_family`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py) and [`apply_ui_font_to_named_fonts`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py) (`Segoe UI` on Windows, and matching TrueType humanist sans-serif fonts on macOS and Linux to avoid legacy bitmap `fixed` fonts):
+1. **Top Navigation Bar:** Dataset directory/file pickers, sequential target navigation, queue filter (`All` / `Unlabeled` / `Labeled`), and target status summary.
+2. **Edit & Scoring Bar:** Editing mode (`Shots` vs. `Bullseye Center`), calibrated caliber selector, `Clear Shots`, `Revert`, `Save (Ctrl+S)`, and `Light Mode` / `Dark Mode` toggle.
+3. **Auto-Label & Target Type Bar:** NRA target type selector (`B-2` / `B-3`), `Auto-Label (A)`, `Rectify (Manual)`, `Auto-Label All Unlabeled` batch runner, `Auto-Label Settings...`, and inline batch progress readout.
+4. **Export / Copy on Save Bar:** Quick directory destination input, browse dialog, and switch toggle to automatically duplicate verified raw/canonical/annotation pairs on save.
+5. **Interactive Canvas (Center):** High-framerate rendering of the unwarped canonical target card (or raw orientation-corrected photo preview) with calibrated visual overlays and sliding switch controls.
+6. **Metrology HUD & Shot Table (Right):** Elevated `Card.TFrame` target specification card (with `UNLABELED` / `LABELED` status indicator), ballistic group statistics (Score, Extreme Spread, Mean Radius), and interactive shot table. Selecting any row highlights the corresponding shot on canvas.
+7. **Bottom Status Bar:** Live cursor coordinates (pixel space and millimeter radial distance from bullseye) and workflow state messages.
 
 ---
 
@@ -107,8 +109,8 @@ When you navigate to an unlabeled image (indicated by the `[UNLABELED]` state ba
 
 ### B. In-Editor Labeling Actions
 
-#### 1. `✨ Auto-Label (A)` (Keyboard Shortcut: `A`)
-Press `A` (or click `✨ Auto-Label (A)`) to execute in-memory neural auto-labeling via the cached [`AutoLabelPipeline`](file:///home/antho/target_scorer/src/target_scorer/data/autolabel.py):
+#### 1. `Auto-Label (A)` (Keyboard Shortcut: `A`)
+Press `A` (or click `Auto-Label (A)`) to execute in-memory neural auto-labeling via the cached [`AutoLabelPipeline`](file:///home/antho/target_scorer/src/target_scorer/data/autolabel.py):
 * Perspective rectification is computed in memory to produce a $1024 \times 1024$ canonical crop at $4.0\text{ px/mm}$.
 * The deep U-Net regresses continuous heatmaps for bullet holes and the bullseye center.
 * Candidates are extracted via 2D quadratic Taylor series expansion and scrubbed through defense-in-depth metrology filters (ink chroma tests, 1D pen stroke aspect ratio, and void verification).
@@ -119,19 +121,19 @@ Press `A` (or click `✨ Auto-Label (A)`) to execute in-memory neural auto-label
 > [!TIP]
 > You can also press `A` on **already-labeled** targets to re-run automated detection from scratch with your current auto-label settings.
 
-#### 2. `📐 Rectify (Manual)`
+#### 2. `Rectify (Manual)`
 If you are annotating an unusual target card, testing a new caliber without model weights, or handling an edge case where neural detection is bypassed:
-* Click **`📐 Rectify (Manual)`** to unwarp the raw image into the canonical $1024 \times 1024$ metric grid with 0 shot markers.
+* Click **`Rectify (Manual)`** to unwarp the raw image into the canonical $1024 \times 1024$ metric grid with 0 shot markers.
 * The aiming black and bullseye origin are centered automatically, allowing you to click directly on the canvas to place and score shots by hand.
 
-#### 3. `⚡ Auto-Label All Unlabeled` (Background Batch Processing)
+#### 3. `Auto-Label All Unlabeled` (Background Batch Processing)
 To auto-label an entire folder of photos in a single click:
-* Click **`⚡ Auto-Label All Unlabeled`** in the auto-label toolbar.
+* Click **`Auto-Label All Unlabeled`** in the auto-label toolbar.
 * A background worker thread processes each unlabeled image sequentially while updating the inline toolbar progress indicator (`Batch: 3/18 saved`) without blocking the main UI.
 * For each photo, the canonical $1024 \times 1024$ image, `.json` annotation, and `*_review.png` verification card are written to disk immediately upon completion. If the active target on screen is processed and has no unsaved manual edits, the canvas automatically updates with the rectified card and predictions.
-* While running, the button transforms into **`⏹ Stop Batch`** so you can gracefully halt the batch after the current target finishes.
+* While running, the button transforms into **`Stop Batch`** so you can gracefully halt the batch after the current target finishes.
 
-#### 4. `⚙ Auto-Label Settings...` ([`AutoLabelSettingsDialog`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py))
+#### 4. `Auto-Label Settings...` ([`AutoLabelSettingsDialog`](file:///home/antho/target_scorer/src/target_scorer/gui/annotation_editor.py))
 Click the settings gear to open the modal configuration dialog:
 * **Checkpoint (`.pt`):** Path to PyTorch model weights (default: `weights/target_scoring_hrnet_1024_best.pt`).
 * **Peak Threshold (`0.05–0.95`):** Sensitivity threshold for bullet hole extraction (default: `0.40`). Lower values (e.g. `0.25`) detect faint grease rings; higher values (e.g. `0.55`) enforce high precision.
@@ -180,7 +182,7 @@ The editor includes a built-in virtual **Eagle Eye Scoring Gauge** dialog simula
 
 ```
                   ┌──────────────────────────────────────────┐
-                  │ SHOT #3 OPTICAL INSPECTION   [✕ Close]   │
+                  │ SHOT #3 OPTICAL INSPECTION [Close (Esc)] │
                   ├──────────────────────────────────────────┤
                   │                                          │
                   │              (  8x Zoom  )               │
@@ -200,19 +202,19 @@ The editor includes a built-in virtual **Eagle Eye Scoring Gauge** dialog simula
                   │ Loupe Zoom: [6x] [8x] [12x]              │
                   │ Nudge Step: [0.2px] [0.5px] [1.0px]      │
                   │                                          │
-                  │                 [ ▲ ]                    │
-                  │             [ ◀ ] ✛ [ ▶ ]                │
-                  │                 [ ▼ ]                    │
+                  │                 [ Up ]                   │
+                  │            [Left]  +  [Right]            │
+                  │                [ Down ]                  │
                   │                                          │
-                  │ [◀ Prev Shot (P)]      [Next Shot (N) ▶] │
-                  │ [✕ Exit Eagle Eye (Esc / E)]             │
+                  │ [< Prev Shot (P)]      [Next Shot (N) >] │
+                  │ [Exit Eagle Eye (Esc / E)]               │
                   └──────────────────────────────────────────┘
 ```
 
 ### A. How the Loupe Works
-1. **High-Power Magnification:** Crops a localized patch around the selected bullet impact and enlarges it with nearest-neighbor sub-pixel fidelity ($6\times$, $8\times$, or $12\times$).
+1. **High-Power Magnification:** Crops a localized patch around the selected bullet impact and enlarges it with `BILINEAR` interpolation up to $4\times$ and `NEAREST` sub-pixel pixel-accurate resampling above $4\times$ ($6\times$, $8\times$, or $12\times$).
 2. **Scoring Ring Arcs:** Accurately renders the arcs of any NRA scoring rings passing through the magnifier's field of view, labeled with their ring denomination.
-3. **Caliber Flange Reticle:** Overlays an engraved circular reticle matching the exact physical diameter of the selected caliber (.22 LR, 9mm, or .45 ACP).
+3. **Caliber Flange Reticle:** Overlays an engraved circular reticle matching the exact physical diameter of the selected caliber (`.22 LR`, `.32 S&W Long`, `9mm / .38`, or `.45 ACP`).
 4. **Sub-Pixel Crosshair:** A crimson crosshair identifies the exact continuous center coordinate $(x, y)$.
 
 ### B. NRA Rule 14.3 Inward Break Scoring
@@ -226,13 +228,13 @@ If $d_{\text{gauge}} \le r_{\text{ring}}$, the flange breaks the line, and the d
 ### C. Launching & Exiting the Loupe
 * **To Open:**
   * Press `E` on the keyboard with any shot selected.
-  * Click the **🔍 Eagle Eye Gauge (E)** button on the sidebar.
+  * Click the **Eagle Eye Scoring Gauge (E)** button on the sidebar.
   * **Double-click** any shot marker on the target canvas.
 * **To Exit:**
   * Press `Escape` (Esc).
   * Press `E` or `Q`.
-  * Click the top-right `✕ Close` button.
-  * Click the full-width bottom `✕ Exit Eagle Eye` button.
+  * Click the top-right `Close (Esc)` button.
+  * Click the full-width bottom `Exit Eagle Eye (Esc / E)` button.
 
 ### D. Fine Nudge Controls
 While inspecting a shot under the loupe, fine adjustments can be made without touching the mouse:
@@ -295,11 +297,11 @@ If a shot was missed during automatic peak detection (e.g. tightly clustered dou
 
 ### 3. Deleting False Positives
 * **Single Shot:** Right-click directly on the shot marker, or select it in the table and press `Delete` or `Backspace`.
-* **All Shots:** Click the `✕ Clear Shots` button to wipe all markers and re-annotate from scratch.
+* **All Shots:** Click the `Clear Shots` button to wipe all markers and re-annotate from scratch.
 
 ### 4. Adjusting the Target Bullseye Center
 If paper deformation or printing irregularities displaced the bullseye:
-1. Toggle Mode to **Bullseye Center** in the top toolbar.
+1. Toggle Mode to **Bullseye Center** in the edit toolbar.
 2. Drag the gold bullseye crosshair to the exact center of the 10-ring.
 3. All radial distances and ring scores recalculate instantly relative to the new origin.
 
@@ -307,14 +309,14 @@ If paper deformation or printing irregularities displaced the bullseye:
 If shots were added or deleted out of order, click **Re-number** in the shot table header to sequentially re-index shots from `1` to `N`.
 
 ### 6. Saving Annotations & Automatic Export to Dataset
-Press `Ctrl+S` (or click **💾 Save JSON & Review**). This executes an atomic update:
+Press `Ctrl+S` (or click **Save (Ctrl+S)**). This executes an atomic update:
 1. Serializes the updated coordinates, caliber, ring scores, and dispersion metrics into the target's `.json` file.
 2. Appends `manually_verified: true` and an ISO-8601 timestamp to the metadata.
 3. Re-renders the visual verification card (`*_review.png`) on disk with updated crosshairs and HUD banner.
 
 #### Optional Auto-Copy to Directory on Save:
-When reviewing targets from a staging folder (such as `autolabeled_photos/B-2/JPEG/`), enable **"Copy on Save to directory:"** directly below the top toolbar (or pass `--copy-to-dir <PATH>` on launch):
-* **Select Destination:** Click **📁 Browse Destination...** or type a path (e.g. `private/data/real_targets` or `private/data/real_targets/B-2`).
+When reviewing targets from a staging folder (such as `autolabeled_photos/B-2/JPEG/`), enable **"Copy on Save to directory:"** directly below the top toolbars (or pass `--copy-to-dir <PATH>` on launch):
+* **Select Destination:** Click **Browse Destination...** or type a path (e.g. `private/data/real_targets` or `private/data/real_targets/B-2`).
 * **Automatic Assets Copied:**
   * **Annotation JSON:** Updated verified `.json` file.
   * **Canonical Image:** The rectified `*_canonical.png` ($1024 \times 1024$).
