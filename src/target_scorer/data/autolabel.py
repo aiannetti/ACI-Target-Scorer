@@ -35,6 +35,9 @@ def resolve_checkpoint_path(checkpoint_path: Optional[Union[str, Path]]) -> Opti
         Returns the resolved path string if found, otherwise raises FileNotFoundError.
     """
     if checkpoint_path is None:
+        cwd_candidate = os.path.join(os.getcwd(), "weights", "target_scoring_hrnet_1024_best.pt")
+        if os.path.exists(cwd_candidate):
+            return os.path.abspath(cwd_candidate)
         default_candidate = os.path.join(
             os.path.dirname(__file__), "..", "..", "..", "weights", "target_scoring_hrnet_1024_best.pt"
         )
@@ -45,6 +48,10 @@ def resolve_checkpoint_path(checkpoint_path: Optional[Union[str, Path]]) -> Opti
     resolved_ckpt = str(checkpoint_path)
     if os.path.exists(resolved_ckpt):
         return os.path.abspath(resolved_ckpt)
+
+    cwd_alt = os.path.join(os.getcwd(), "weights", os.path.basename(resolved_ckpt))
+    if os.path.exists(cwd_alt):
+        return os.path.abspath(cwd_alt)
 
     alt = os.path.join(
         os.path.dirname(__file__), "..", "..", "..", "weights", os.path.basename(resolved_ckpt)

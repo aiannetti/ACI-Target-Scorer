@@ -7,6 +7,8 @@ and terminates cloud sessions safely to conserve compute units.
 
 import argparse
 import os
+from pathlib import Path
+import posixpath
 import shutil
 import subprocess
 import sys
@@ -19,10 +21,11 @@ def get_colab_bin() -> str:
     colab_path = shutil.which("colab")
     if colab_path:
         return colab_path
-    home_bin = os.path.expanduser("~/.local/bin/colab")
+    exe_name = "colab.exe" if sys.platform == "win32" else "colab"
+    home_bin = os.path.expanduser(f"~/.local/bin/{exe_name}")
     if os.path.exists(home_bin):
         return home_bin
-    raise FileNotFoundError("Google Colab CLI ('colab') executable not found in PATH or ~/.local/bin/colab.")
+    raise FileNotFoundError(f"Google Colab CLI ('colab') executable not found in PATH or {home_bin}.")
 
 
 def check_colab_usage(colab_bin: str) -> None:
@@ -79,7 +82,7 @@ def package_real_dataset_bundle(real_data_dir: str, output_zip_path: str) -> Non
                 if ext in (".raw", ".nef", ".cr2", ".dng", ".arw") or file.endswith("_review.png"):
                     continue
                 abs_p = os.path.join(root, file)
-                rel_p = os.path.relpath(abs_p, real_data_dir)
+                rel_p = Path(abs_p).relative_to(Path(real_data_dir)).as_posix()
                 zf.write(abs_p, rel_p)
 
 
@@ -111,8 +114,8 @@ def upload_file_chunked(
         subprocess.run(cmd, check=True)
         return
 
-    base_name = os.path.basename(remote_path)
-    remote_dir = os.path.dirname(remote_path) or "/content"
+    base_name = posixpath.basename(remote_path)
+    remote_dir = posixpath.dirname(remote_path) or "/content"
     chunks = []
     chunk_idx = 0
     with open(local_path, "rb") as f:

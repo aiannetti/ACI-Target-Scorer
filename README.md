@@ -19,7 +19,7 @@ For deep dives into workflows, algorithms, metrology grounding, and APIs, consul
 * 🏗️ **[Technical Architecture & Developer Guide](file:///home/antho/target_scorer/docs/architecture_and_developer_guide.md):** System data flow diagrams (Mermaid / ASCII), physical metrology grounding, Harmonic 256-Grid Progressive Resizing, U-Net heatmap regression, Adaptive Wing Loss formulation, Fitzgibbon conic homography unwarping, 2D Taylor-series sub-pixel peak extraction, and `TargetAnnotation` schema.
 * 🪟 **[Windows Installation & Quickstart Guide](file:///home/antho/target_scorer/docs/windows_installation_and_quickstart_guide.md):** Complete beginner guide for Windows 10/11 users: Microsoft Store Python 3.11, fast package management via `uv`, 1-click global CLI installation (`uv tool`), NVIDIA CUDA setup, PowerShell execution policy configuration, and troubleshooting.
 * 🏛️ **[Target Scoring System Context Document](file:///home/antho/target_scorer/docs/target_scoring_system_context_document.md):** High-level system context, project mission, historical development milestones, Sprint roadmaps (Sprints 1–11), and domain metrology specifications.
-* 🧪 **[Verification & Testing Plan](file:///home/antho/target_scorer/docs/target_scoring_testing_plan.md):** Complete breakdown of all 10 unit/regression test modules (130 tests), metrology verification matrices, and benchmark criteria.
+* 🧪 **[Verification & Testing Plan](file:///home/antho/target_scorer/docs/target_scoring_testing_plan.md):** Complete breakdown of all 10 unit/regression test modules (131 tests), metrology verification matrices, and benchmark criteria.
 * 🖼️ **[Image Format & ML Ingestion Guide](file:///home/antho/target_scorer/docs/image_format_landscape_and_ml_ingestion_guide.md):** Reference for HEIC, ProRAW DNG, Android Ultra HDR, EXIF orientation, Display P3 CMS, and Raspberry Pi `Picamera2` memory buffers.
 
 ---
@@ -146,7 +146,7 @@ target_scorer/
 │   ├── image_format_landscape_and_ml_ingestion_guide.md # Cross-platform image formats & ingestion
 │   ├── interactive_annotation_editor_guide.md    # Desktop GUI & Eagle Eye loupe guide
 │   ├── target_scoring_system_context_document.md # High-level system context & sprint roadmap
-│   ├── target_scoring_testing_plan.md            # Verification matrices & 130-test suite breakdown
+│   ├── target_scoring_testing_plan.md            # Verification matrices & 131-test suite breakdown
 │   ├── windows_installation_and_quickstart_guide.md # Windows 10/11 novice installation & quickstart
 │   └── benchmarks/
 │       ├── visual_benchmark_inspection_report.md # Graphical benchmark verification report
@@ -199,7 +199,7 @@ target_scorer/
 │   ├── test_benchmark_low_res.py    # Procedural 100-target statistical regression benchmark (1 test)
 │   ├── test_camera_angles.py        # Perspective rectification, boundary tolerance, & U-Net AMP tests (9 tests)
 │   ├── test_canonical_loader.py     # Format-independent ingestion & in-memory buffer tests (8 tests)
-│   ├── test_cli.py                  # Unified CLI dispatcher & argument handling tests (5 tests)
+│   ├── test_cli.py                  # Unified CLI & python -m dispatcher tests (6 tests)
 │   ├── test_colab_runner.py         # Colab CLI orchestration, chunked upload, & bundle tests (16 tests)
 │   ├── test_low_res_metrology.py    # Scoring compliance & defense-in-depth metrology tests (33 tests)
 │   ├── test_progressive_training.py # Dynamic spatial resizing & progressive curriculum tests (6 tests)
@@ -361,10 +361,10 @@ To preserve competitor privacy and protect sensitive physical range target photo
 
 ## Automated Test Suite
 
-Run the full battery of **130 unit, GUI, progressive, metrology, and regression tests** across all **10 test modules**:
+Run the full battery of **131 unit, GUI, progressive, metrology, and regression tests** across all **10 test modules**:
 
 ```bash
-# Run complete test suite (130 tests across 10 modules):
+# Run complete test suite (131 tests across 10 modules):
 python -m unittest discover tests/ -v
 
 # Run Interactive Annotation Editor, in-editor auto-label, & cross-platform font tests (20 tests):

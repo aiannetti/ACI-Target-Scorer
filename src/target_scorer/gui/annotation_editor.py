@@ -1129,9 +1129,16 @@ class AnnotationEditor(tk.Tk):
         self.canvas.bind("<ButtonRelease-1>", self.on_canvas_left_release)
 
         self.canvas.bind("<Double-Button-1>", self.on_canvas_double_click)
-        self.canvas.bind("<Button-3>", self.on_canvas_right_click)
-        self.canvas.bind("<Button-2>", self.on_canvas_middle_click)
-        self.canvas.bind("<B2-Motion>", self.on_canvas_middle_drag)
+        if sys.platform == "darwin":
+            # Aqua Tk swaps right (<Button-2>) and middle (<Button-3>); also allow Control-click
+            self.canvas.bind("<Button-2>", self.on_canvas_right_click)
+            self.canvas.bind("<Control-Button-1>", self.on_canvas_right_click)
+            self.canvas.bind("<Button-3>", self.on_canvas_middle_click)
+            self.canvas.bind("<B3-Motion>", self.on_canvas_middle_drag)
+        else:
+            self.canvas.bind("<Button-3>", self.on_canvas_right_click)
+            self.canvas.bind("<Button-2>", self.on_canvas_middle_click)
+            self.canvas.bind("<B2-Motion>", self.on_canvas_middle_drag)
         self.canvas.bind("<Motion>", self.on_canvas_mouse_move)
 
         # Mouse Wheel Zooming
@@ -2162,6 +2169,8 @@ class AnnotationEditor(tk.Tk):
         self.redraw_canvas()
 
     def on_mouse_wheel(self, event):
+        if not event.delta:
+            return
         factor = 1.15 if event.delta > 0 else 0.85
         self.change_zoom(factor, (event.x, event.y))
 

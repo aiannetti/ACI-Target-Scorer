@@ -132,7 +132,7 @@ Bullet Radius = 5.69 mm / 2 = 2.845 mm
 
 ---
 
-### Module 6: Additional Automated Test Modules (86 Tests across 8 Modules)
+### Module 6: Additional Automated Test Modules (87 Tests across 8 Modules)
 
 | Test Module | Test Count | Scope & Coverage |
 | :--- | :---: | :--- |
@@ -142,10 +142,10 @@ Bullet Radius = 5.69 mm / 2 = 2.845 mm
 | `tests/test_canonical_loader.py` | **8** | Format-independent ingestion (HEIC, RAW, TIFF, PNG, JPEG, WebP, BMP), bytes/BytesIO, NumPy buffers, EXIF 1–8, Display P3 CMS |
 | `tests/test_synthetic_holes.py` | **8** | 3-tone bullet void penetration (`scanner_white`, `dark_void`, `tan_backer`), ragged holes, keyholes, 4-zone placement, zero-heatmap markings/seals |
 | `tests/test_progressive_training.py` | **6** | Harmonic 256-Grid curriculum & dynamic spatial resizing ($256 \to 512 \to 768 \to 1024$) preserving optimizer momentum |
-| `tests/test_cli.py` | **5** | Unified `target-scorer` CLI dispatcher routing and argument parsing across subcommands |
+| `tests/test_cli.py` | **6** | Unified `target-scorer` & `python -m target_scorer` CLI dispatcher routing and argument parsing across subcommands |
 | `tests/test_benchmark_low_res.py` | **1** | 100-target procedural statistical regression benchmark |
 
-**Full Test Suite Summary:** **130 test methods across 10 test modules** (`python -m unittest discover tests/ -v`).
+**Full Test Suite Summary:** **131 test methods across 10 test modules** (`python -m unittest discover tests/ -v`).
 
 ---
 
@@ -193,4 +193,4 @@ Bullet Radius = 5.69 mm / 2 = 2.845 mm
 
 ### Phase 9: Interactive GUI, In-Editor Auto-Labeling, & Cross-Platform UI Polish [Completed ✓]
 - Unified `TargetEntry` discovery, `All`/`Unlabeled`/`Labeled` filtering, `AutoLabelSettingsDialog`, in-editor single & background-batch auto-labeling, manual rectification, and cross-platform sans-serif UI font resolution (`resolve_ui_font_family`, `apply_ui_font_to_named_fonts`).
-- 20 unit tests in `tests/test_annotation_editor.py` (**130 total test methods across 10 modules**).
+- 20 unit tests in `tests/test_annotation_editor.py` (**131 total test methods across 10 modules**).

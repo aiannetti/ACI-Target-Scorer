@@ -82,6 +82,16 @@ class TestCLIDispatcher(unittest.TestCase):
                     self.assertIn("pip install google-colab-cli", output)
                     self.assertIn("colab login", output)
 
+    def test_python_m_entrypoint_help(self):
+        """Verifies `python -m target_scorer --help` invokes the unified CLI dispatcher."""
+        import runpy
+        with patch.object(sys, "argv", ["target_scorer", "--help"]):
+            with patch("sys.stdout", new=StringIO()) as fake_out:
+                with self.assertRaises(SystemExit) as cm:
+                    runpy.run_module("target_scorer", run_name="__main__")
+                self.assertEqual(cm.exception.code, 0)
+                self.assertIn("target-scorer", fake_out.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

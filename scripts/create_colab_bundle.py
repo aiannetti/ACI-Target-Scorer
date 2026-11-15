@@ -5,6 +5,7 @@ Excludes virtual environments, git history, caches, and test outputs.
 """
 
 import os
+from pathlib import Path
 import sys
 import zipfile
 
@@ -58,15 +59,15 @@ def make_colab_bundle(output_path=None, project_root=None):
             dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS and not d.endswith(".egg-info")]
 
             for file in files:
-                ext = os.path.splitext(file)[1]
-                if ext in EXCLUDE_EXTS or file.endswith("~") or file.endswith(".zip"):
+                ext = os.path.splitext(file)[1].lower()
+                if ext in EXCLUDE_EXTS or file.endswith("~") or ext == ".zip":
                     continue
 
                 abs_path = os.path.join(root, file)
-                rel_path = os.path.relpath(abs_path, root_dir)
+                rel_posix = Path(abs_path).relative_to(Path(root_dir)).as_posix()
 
-                # Prefix with target_scorer/ inside the archive
-                arcname = os.path.join("target_scorer", rel_path)
+                # Prefix with target_scorer/ using POSIX separators for Linux Colab VMs
+                arcname = f"target_scorer/{rel_posix}"
                 zf.write(abs_path, arcname)
                 file_count += 1
 

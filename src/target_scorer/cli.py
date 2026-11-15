@@ -5,9 +5,17 @@ Unified command-line interface for the Target Scorer package.
 import argparse
 import sys
 
-from target_scorer.infer import main as infer_main
-from target_scorer.train import main as train_main
-from target_scorer.colab_runner import main as colab_main
+colab_main = None
+
+
+def _configure_stdio_utf8():
+    """Ensures UTF-8 CLI output on platforms whose default console encoding is non-UTF-8."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (OSError, ValueError):
+                pass
 
 
 def rectify_cli():
@@ -107,8 +115,11 @@ def autolabel_cli():
 
 
 def colab_cli():
+    fn = colab_main
+    if fn is None:
+        from target_scorer.colab_runner import main as fn
     try:
-        colab_main()
+        fn()
     except FileNotFoundError as e:
         print(f"[-] Error: {e}")
         print("    To use Google Colab cloud orchestration, install the CLI:")
@@ -217,6 +228,7 @@ def annotate_cli():
 
 
 def main():
+    _configure_stdio_utf8()
     parser = argparse.ArgumentParser(
         prog="target-scorer",
         description="Camera-Independent NRA Pistol Target Metrology & Scoring Engine"
@@ -237,10 +249,12 @@ def main():
 
     subcommand = sys.argv[1]
     if subcommand == "infer":
+        from target_scorer.infer import main as infer_main
         # Forward sys.argv
         sys.argv = [sys.argv[0]] + sys.argv[2:]
         infer_main()
     elif subcommand == "train":
+        from target_scorer.train import main as train_main
         sys.argv = [sys.argv[0]] + sys.argv[2:]
         train_main()
     elif subcommand == "colab-train":
