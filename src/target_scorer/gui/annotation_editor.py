@@ -165,8 +165,8 @@ class EagleEyeLoupe(tk.Toplevel):
         self.loupe_photo: Optional[ImageTk.PhotoImage] = None
 
         self.title(f"Eagle Eye Scoring Gauge - Shot #{self.get_current_shot_id()}")
-        self.geometry("450x680")
-        self.minsize(420, 660)
+        self.geometry("460x795")
+        self.minsize(450, 785)
         theme = getattr(parent, "current_theme", "dark")
         bg_color = "#1c1c1c" if theme == "dark" else "#fafafa"
         self.configure(bg=bg_color)
@@ -179,8 +179,8 @@ class EagleEyeLoupe(tk.Toplevel):
 
         # Center relative to parent window without blocking event loop
         try:
-            px = parent.winfo_rootx() + (parent.winfo_width() - 450) // 2
-            py = parent.winfo_rooty() + (parent.winfo_height() - 680) // 2
+            px = parent.winfo_rootx() + (parent.winfo_width() - 460) // 2
+            py = parent.winfo_rooty() + (parent.winfo_height() - 795) // 2
             self.geometry(f"+{max(20, px)}+{max(20, py)}")
         except Exception:
             pass
@@ -528,8 +528,8 @@ class AutoLabelSettingsDialog(tk.Toplevel):
         super().__init__(parent)
         self.parent_editor = parent
         self.title("Auto-Label Model & Metrology Settings")
-        self.geometry("540x290")
-        self.resizable(False, False)
+        self.geometry("660x315")
+        self.minsize(630, 305)
         self.transient(parent)
         self.grab_set()
 
@@ -549,7 +549,7 @@ class AutoLabelSettingsDialog(tk.Toplevel):
         )
 
         ttk.Label(frame, text="Checkpoint (.pt):").grid(row=1, column=0, sticky=tk.W, pady=6)
-        ttk.Entry(frame, textvariable=self._ckpt_var, width=42).grid(row=1, column=1, sticky=tk.EW, padx=8, pady=6)
+        ttk.Entry(frame, textvariable=self._ckpt_var, width=36).grid(row=1, column=1, sticky=tk.EW, padx=8, pady=6)
         ttk.Button(frame, text="Browse...", command=self._on_browse_ckpt).grid(row=1, column=2, pady=6)
 
         ttk.Label(frame, text="Peak Threshold (0.05–0.95):").grid(row=2, column=0, sticky=tk.W, pady=6)
@@ -625,7 +625,7 @@ class AnnotationEditor(tk.Tk):
 
         self.title("Target Scorer - Interactive Shot Annotation & Metrology Editor")
         self.geometry("1420x920")
-        self.minsize(1050, 700)
+        self.minsize(1160, 740)
 
         # Resolve platform-appropriate UI font family ('Segoe UI' on Windows; closest sans-serif on macOS/Linux)
         self.ui_font_family: str = resolve_ui_font_family(self)
@@ -874,8 +874,8 @@ class AnnotationEditor(tk.Tk):
             self.eagle_eye_dialog.update_theme(theme)
 
     def _build_ui(self):
-        # 1. Top Control Toolbar
-        top_bar = ttk.Frame(self, padding=(10, 8))
+        # 1. Top Navigation & Filter Toolbar
+        top_bar = ttk.Frame(self, padding=(10, 6))
         top_bar.pack(side=tk.TOP, fill=tk.X)
 
         btn_open = ttk.Button(top_bar, text="📁 Open Dir...", style="Accent.TButton", command=self.on_open_directory)
@@ -895,52 +895,9 @@ class AnnotationEditor(tk.Tk):
 
         ttk.Separator(top_bar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
 
-        # Mode Selection
-        ttk.Label(top_bar, text="Mode:").pack(side=tk.LEFT, padx=(0, 4))
-        rb_shot = ttk.Radiobutton(top_bar, text="Shots (Click / Drag)", variable=self.edit_mode_var, value="shot")
-        rb_shot.pack(side=tk.LEFT, padx=4)
-        rb_bull = ttk.Radiobutton(top_bar, text="Bullseye Center", variable=self.edit_mode_var, value="bullseye")
-        rb_bull.pack(side=tk.LEFT, padx=4)
-
-        ttk.Separator(top_bar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
-
-        # Caliber Selector
-        ttk.Label(top_bar, text="Caliber:").pack(side=tk.LEFT, padx=(0, 4))
-        self.caliber_combo = ttk.Combobox(
-            top_bar,
-            values=[".22 LR (5.69 mm)", ".32 S&W Long (7.98 mm)", "9mm / .38 (9.02 mm)", ".45 ACP (11.48 mm)"],
-            state="readonly",
-            width=20
-        )
-        self.caliber_combo.current(0)
-        self.caliber_combo.bind("<<ComboboxSelected>>", self.on_caliber_changed)
-        self.caliber_combo.pack(side=tk.LEFT, padx=4)
-
-        # Right-aligned buttons on top toolbar
-        self.btn_theme = ttk.Button(
-            top_bar,
-            text="☀️ Light Mode" if self.current_theme == "dark" else "🌙 Dark Mode",
-            command=self.toggle_theme,
-            width=13
-        )
-        self.btn_theme.pack(side=tk.RIGHT, padx=4)
-
-        btn_save = ttk.Button(top_bar, text="💾 Save (Ctrl+S)", style="Accent.TButton", command=self.on_save)
-        btn_save.pack(side=tk.RIGHT, padx=4)
-
-        btn_reset = ttk.Button(top_bar, text="↺ Revert", command=self.on_revert)
-        btn_reset.pack(side=tk.RIGHT, padx=4)
-
-        btn_clear = ttk.Button(top_bar, text="✕ Clear Shots", style="Danger.TButton", command=self.on_clear_shots)
-        btn_clear.pack(side=tk.RIGHT, padx=4)
-
-        # 1a. Auto-Label & Filter Bar
-        autolabel_bar = ttk.Frame(self, padding=(10, 4))
-        autolabel_bar.pack(side=tk.TOP, fill=tk.X)
-
-        ttk.Label(autolabel_bar, text="Filter:").pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Label(top_bar, text="Filter:").pack(side=tk.LEFT, padx=(0, 4))
         self.filter_combo = ttk.Combobox(
-            autolabel_bar,
+            top_bar,
             textvariable=self.filter_var,
             values=["All", "Unlabeled", "Labeled"],
             state="readonly",
@@ -949,12 +906,57 @@ class AnnotationEditor(tk.Tk):
         self.filter_combo.bind("<<ComboboxSelected>>", self.on_filter_changed)
         self.filter_combo.pack(side=tk.LEFT, padx=(0, 8))
 
-        self.lbl_counts = ttk.Label(autolabel_bar, text="0 targets", foreground="#a0a4b0")
-        self.lbl_counts.pack(side=tk.LEFT, padx=(0, 10))
+        self.lbl_counts = ttk.Label(top_bar, text="0 targets", foreground="#a0a4b0")
+        self.lbl_counts.pack(side=tk.LEFT, padx=(0, 8))
 
-        ttk.Separator(autolabel_bar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=6)
+        # 1a. Mode, Caliber & Primary Edit Actions Bar
+        edit_bar = ttk.Frame(self, padding=(10, 4))
+        edit_bar.pack(side=tk.TOP, fill=tk.X)
 
-        ttk.Label(autolabel_bar, text="Target Type:").pack(side=tk.LEFT, padx=(6, 4))
+        ttk.Label(edit_bar, text="Mode:").pack(side=tk.LEFT, padx=(0, 4))
+        rb_shot = ttk.Radiobutton(edit_bar, text="Shots (Click / Drag)", variable=self.edit_mode_var, value="shot")
+        rb_shot.pack(side=tk.LEFT, padx=4)
+        rb_bull = ttk.Radiobutton(edit_bar, text="Bullseye Center", variable=self.edit_mode_var, value="bullseye")
+        rb_bull.pack(side=tk.LEFT, padx=4)
+
+        ttk.Separator(edit_bar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
+
+        # Caliber Selector
+        ttk.Label(edit_bar, text="Caliber:").pack(side=tk.LEFT, padx=(0, 4))
+        self.caliber_combo = ttk.Combobox(
+            edit_bar,
+            values=[".22 LR (5.69 mm)", ".32 S&W Long (7.98 mm)", "9mm / .38 (9.02 mm)", ".45 ACP (11.48 mm)"],
+            state="readonly",
+            width=20
+        )
+        self.caliber_combo.current(0)
+        self.caliber_combo.bind("<<ComboboxSelected>>", self.on_caliber_changed)
+        self.caliber_combo.pack(side=tk.LEFT, padx=(4, 8))
+
+        ttk.Separator(edit_bar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=6)
+
+        # Primary action & theme buttons placed adjacent to Caliber for quick access without clipping
+        btn_clear = ttk.Button(edit_bar, text="✕ Clear Shots", style="Danger.TButton", command=self.on_clear_shots)
+        btn_clear.pack(side=tk.LEFT, padx=4)
+
+        btn_reset = ttk.Button(edit_bar, text="↺ Revert", command=self.on_revert)
+        btn_reset.pack(side=tk.LEFT, padx=4)
+
+        btn_save = ttk.Button(edit_bar, text="💾 Save (Ctrl+S)", style="Accent.TButton", command=self.on_save)
+        btn_save.pack(side=tk.LEFT, padx=4)
+
+        self.btn_theme = ttk.Button(
+            edit_bar,
+            text="☀️ Light Mode" if self.current_theme == "dark" else "🌙 Dark Mode",
+            command=self.toggle_theme,
+        )
+        self.btn_theme.pack(side=tk.LEFT, padx=(8, 4))
+
+        # 1b. Auto-Label Bar
+        autolabel_bar = ttk.Frame(self, padding=(10, 4))
+        autolabel_bar.pack(side=tk.TOP, fill=tk.X)
+
+        ttk.Label(autolabel_bar, text="Target Type:").pack(side=tk.LEFT, padx=(0, 4))
         self.target_type_combo = ttk.Combobox(
             autolabel_bar,
             textvariable=self.target_type_var,
@@ -971,33 +973,33 @@ class AnnotationEditor(tk.Tk):
             style="Accent.TButton",
             command=self.on_autolabel_current
         )
-        self.btn_autolabel.pack(side=tk.LEFT, padx=3)
+        self.btn_autolabel.pack(side=tk.LEFT, padx=4)
 
         self.btn_rectify_manual = ttk.Button(
             autolabel_bar,
             text="📐 Rectify (Manual)",
             command=self.on_rectify_manual
         )
-        self.btn_rectify_manual.pack(side=tk.LEFT, padx=3)
+        self.btn_rectify_manual.pack(side=tk.LEFT, padx=4)
 
         self.btn_batch_autolabel = ttk.Button(
             autolabel_bar,
             text="⚡ Auto-Label All Unlabeled",
             command=self.on_autolabel_all_unlabeled
         )
-        self.btn_batch_autolabel.pack(side=tk.LEFT, padx=3)
+        self.btn_batch_autolabel.pack(side=tk.LEFT, padx=4)
 
         self.btn_autolabel_settings = ttk.Button(
             autolabel_bar,
             text="⚙ Auto-Label Settings...",
             command=self.on_open_autolabel_settings
         )
-        self.btn_autolabel_settings.pack(side=tk.LEFT, padx=3)
+        self.btn_autolabel_settings.pack(side=tk.LEFT, padx=4)
 
         self.lbl_batch_progress = ttk.Label(autolabel_bar, text="", foreground="#57c8ff", font=self._font(9, "bold"))
         self.lbl_batch_progress.pack(side=tk.LEFT, padx=10)
 
-        # 1b. Export / Copy on Save Bar
+        # 1c. Export / Copy on Save Bar
         export_bar = ttk.Frame(self, padding=(10, 4))
         export_bar.pack(side=tk.TOP, fill=tk.X)
 
@@ -1013,7 +1015,7 @@ class AnnotationEditor(tk.Tk):
         self.entry_copy_dir = ttk.Entry(
             export_bar,
             textvariable=self.copy_dir_var,
-            width=50
+            width=40
         )
         self.entry_copy_dir.pack(side=tk.LEFT, padx=(0, 8))
 
@@ -1045,26 +1047,26 @@ class AnnotationEditor(tk.Tk):
         canvas_tools = ttk.Frame(canvas_frame, padding=(8, 4))
         canvas_tools.pack(side=tk.TOP, fill=tk.X)
 
-        btn_fit = ttk.Button(canvas_tools, text="Fit (F)", command=self.on_fit_window, width=7)
-        btn_fit.pack(side=tk.LEFT, padx=2)
-        btn_100 = ttk.Button(canvas_tools, text="100%", command=self.on_zoom_100, width=6)
-        btn_100.pack(side=tk.LEFT, padx=2)
-        btn_zin = ttk.Button(canvas_tools, text="Zoom +", command=lambda: self.change_zoom(1.25), width=8)
-        btn_zin.pack(side=tk.LEFT, padx=2)
-        btn_zout = ttk.Button(canvas_tools, text="Zoom -", command=lambda: self.change_zoom(0.80), width=8)
-        btn_zout.pack(side=tk.LEFT, padx=2)
+        btn_fit = ttk.Button(canvas_tools, text="Fit (F)", command=self.on_fit_window)
+        btn_fit.pack(side=tk.LEFT, padx=3)
+        btn_100 = ttk.Button(canvas_tools, text="100%", command=self.on_zoom_100)
+        btn_100.pack(side=tk.LEFT, padx=3)
+        btn_zin = ttk.Button(canvas_tools, text="Zoom +", command=lambda: self.change_zoom(1.25))
+        btn_zin.pack(side=tk.LEFT, padx=3)
+        btn_zout = ttk.Button(canvas_tools, text="Zoom -", command=lambda: self.change_zoom(0.80))
+        btn_zout.pack(side=tk.LEFT, padx=3)
 
         self.lbl_zoom = ttk.Label(canvas_tools, text="100%", font=self._font(9, "bold"), width=7)
         self.lbl_zoom.pack(side=tk.LEFT, padx=6)
 
         cb_rings = ttk.Checkbutton(canvas_tools, text="NRA Ring Guides", variable=self.show_rings_var, command=self.redraw_canvas, style=cb_style)
-        cb_rings.pack(side=tk.LEFT, padx=8)
+        cb_rings.pack(side=tk.LEFT, padx=5)
 
         cb_spread = ttk.Checkbutton(canvas_tools, text="Extreme Spread Line", variable=self.show_spread_var, command=self.redraw_canvas, style=cb_style)
-        cb_spread.pack(side=tk.LEFT, padx=8)
+        cb_spread.pack(side=tk.LEFT, padx=5)
 
         cb_badges = ttk.Checkbutton(canvas_tools, text="Shot Badges", variable=self.show_badges_var, command=self.redraw_canvas, style=cb_style)
-        cb_badges.pack(side=tk.LEFT, padx=8)
+        cb_badges.pack(side=tk.LEFT, padx=5)
 
         # Tkinter Canvas
         self.canvas = tk.Canvas(canvas_frame, bg="#101114", highlightthickness=0, cursor="crosshair")

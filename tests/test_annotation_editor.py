@@ -779,6 +779,78 @@ class TestAnnotationEditor(unittest.TestCase):
         finally:
             app.destroy()
 
+    def test_toolbar_button_proximity_and_no_clipping(self):
+        """Verifies action/theme buttons sit next to Caliber and no GUI button is clipped."""
+        from target_scorer.gui.annotation_editor import AutoLabelSettingsDialog
+
+        def collect_buttons(widget):
+            found = []
+            if widget.winfo_class() == "TButton" and widget.winfo_ismapped():
+                found.append(widget)
+            for child in widget.winfo_children():
+                found.extend(collect_buttons(child))
+            return found
+
+        def assert_no_button_clipping(root_widget, label):
+            root_widget.update_idletasks()
+            root_widget.update()
+            buttons = collect_buttons(root_widget)
+            self.assertGreater(len(buttons), 0, f"No buttons found in {label}")
+            for btn in buttons:
+                txt = btn.cget("text")
+                self.assertGreaterEqual(
+                    btn.winfo_width(),
+                    btn.winfo_reqwidth(),
+                    f"{label} button {txt!r} clipped horizontally",
+                )
+                self.assertGreaterEqual(
+                    btn.winfo_height(),
+                    btn.winfo_reqheight(),
+                    f"{label} button {txt!r} clipped vertically",
+                )
+            return buttons
+
+        app = AnnotationEditor(target_dir_or_file=self.tmp_dir)
+        try:
+            # 1. Verify Dark & Light mode main window buttons are unclipped
+            buttons_dark = assert_no_button_clipping(app, "AnnotationEditor (dark)")
+
+            # 2. Verify Clear Shots, Revert, Save, and Theme button share Caliber's toolbar row
+            action_texts = ("✕ Clear Shots", "↺ Revert", "💾 Save (Ctrl+S)", "☀️ Light Mode")
+            by_text = {b.cget("text"): b for b in buttons_dark}
+            caliber_parent = app.caliber_combo.winfo_parent()
+            caliber_right = app.caliber_combo.winfo_x() + app.caliber_combo.winfo_width()
+            prev_right = caliber_right
+            for txt in action_texts:
+                btn = by_text[txt]
+                self.assertEqual(btn.winfo_parent(), caliber_parent, f"{txt!r} not in Caliber row")
+                self.assertGreaterEqual(
+                    btn.winfo_x(), prev_right, f"{txt!r} overlaps preceding widget"
+                )
+                prev_right = btn.winfo_x() + btn.winfo_width()
+
+            # Theme toggle button stays unclipped after toggling to Light Mode
+            app.toggle_theme()
+            assert_no_button_clipping(app, "AnnotationEditor (light)")
+
+            # 3. Verify EagleEyeLoupe buttons are not crushed/clipped
+            app.selected_shot_idx = 0
+            app.on_open_eagle_eye(toggle=False)
+            try:
+                self.assertIsNotNone(app.eagle_eye_dialog)
+                assert_no_button_clipping(app.eagle_eye_dialog, "EagleEyeLoupe")
+            finally:
+                app.close_eagle_eye()
+
+            # 4. Verify AutoLabelSettingsDialog buttons and checkpoint entry are not clipped
+            dlg = AutoLabelSettingsDialog(app)
+            try:
+                assert_no_button_clipping(dlg, "AutoLabelSettingsDialog")
+            finally:
+                dlg.destroy()
+        finally:
+            app.destroy()
+
 
 if __name__ == "__main__":
     unittest.main()
