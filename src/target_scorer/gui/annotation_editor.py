@@ -338,25 +338,25 @@ class EagleEyeLoupe(tk.Toplevel):
         pad_frame = ttk.Frame(ctrl_frame)
         pad_frame.pack(side=tk.TOP, pady=(0, 6))
 
-        btn_up = ttk.Button(pad_frame, text="▲", width=4, command=lambda: self.nudge(0, -self.nudge_step))
+        btn_up = ttk.Button(pad_frame, text="↑", width=4, command=lambda: self.nudge(0, -self.nudge_step))
         btn_up.grid(row=0, column=1, padx=2, pady=2)
-        btn_left = ttk.Button(pad_frame, text="◀", width=4, command=lambda: self.nudge(-self.nudge_step, 0))
+        btn_left = ttk.Button(pad_frame, text="←", width=4, command=lambda: self.nudge(-self.nudge_step, 0))
         btn_left.grid(row=1, column=0, padx=2, pady=2)
         btn_center = ttk.Label(pad_frame, text="✛", font=self.parent_editor._font(11, "bold"), foreground="#ffd700", anchor="center")
         btn_center.grid(row=1, column=1, padx=2, pady=2)
-        btn_right = ttk.Button(pad_frame, text="▶", width=4, command=lambda: self.nudge(self.nudge_step, 0))
+        btn_right = ttk.Button(pad_frame, text="→", width=4, command=lambda: self.nudge(self.nudge_step, 0))
         btn_right.grid(row=1, column=2, padx=2, pady=2)
-        btn_down = ttk.Button(pad_frame, text="▼", width=4, command=lambda: self.nudge(0, self.nudge_step))
+        btn_down = ttk.Button(pad_frame, text="↓", width=4, command=lambda: self.nudge(0, self.nudge_step))
         btn_down.grid(row=2, column=1, padx=2, pady=2)
 
         # Bottom Shot Navigation Bar
         nav_row = ttk.Frame(ctrl_frame)
         nav_row.pack(side=tk.TOP, fill=tk.X, pady=(4, 0))
 
-        btn_prev = ttk.Button(nav_row, text="◀ Prev Shot (P)", command=self.prev_shot)
+        btn_prev = ttk.Button(nav_row, text="← Prev Shot (P)", command=self.prev_shot)
         btn_prev.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 3))
 
-        btn_next = ttk.Button(nav_row, text="Next Shot (N) ▶", command=self.next_shot)
+        btn_next = ttk.Button(nav_row, text="Next Shot (N) →", command=self.next_shot)
         btn_next.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(3, 0))
 
         # Big dedicated Exit button
@@ -884,13 +884,13 @@ class AnnotationEditor(tk.Tk):
         btn_open_img = ttk.Button(top_bar, text="🖼️ Open File...", command=self.on_open_image)
         btn_open_img.pack(side=tk.LEFT, padx=(0, 8))
 
-        btn_prev = ttk.Button(top_bar, text="◀ Prev (P)", command=self.on_prev_target)
+        btn_prev = ttk.Button(top_bar, text="← Prev (P)", command=self.on_prev_target)
         btn_prev.pack(side=tk.LEFT, padx=2)
 
         self.lbl_target_info = ttk.Label(top_bar, text="No targets loaded", font=self._font(10, "bold"), width=34)
         self.lbl_target_info.pack(side=tk.LEFT, padx=6)
 
-        btn_next = ttk.Button(top_bar, text="Next (N) ▶", command=self.on_next_target)
+        btn_next = ttk.Button(top_bar, text="Next (N) →", command=self.on_next_target)
         btn_next.pack(side=tk.LEFT, padx=2)
 
         ttk.Separator(top_bar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)

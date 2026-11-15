@@ -833,12 +833,25 @@ class TestAnnotationEditor(unittest.TestCase):
             app.toggle_theme()
             assert_no_button_clipping(app, "AnnotationEditor (light)")
 
-            # 3. Verify EagleEyeLoupe buttons are not crushed/clipped
+            # 3. Verify EagleEyeLoupe buttons are not crushed/clipped and arrow glyphs render cleanly
             app.selected_shot_idx = 0
             app.on_open_eagle_eye(toggle=False)
             try:
+                import tkinter.font as tkfont
+
                 self.assertIsNotNone(app.eagle_eye_dialog)
-                assert_no_button_clipping(app.eagle_eye_dialog, "EagleEyeLoupe")
+                ee_buttons = assert_no_button_clipping(app.eagle_eye_dialog, "EagleEyeLoupe")
+                ee_by_text = {b.cget("text"): b for b in ee_buttons}
+                ui_font = tkfont.Font(root=app, family=app.ui_font_family, size=10)
+                for arrow in ("↑", "↓", "←", "→"):
+                    self.assertIn(arrow, ee_by_text, f"Missing directional button {arrow!r}")
+                    self.assertGreater(
+                        ui_font.measure(arrow),
+                        0,
+                        f"Directional glyph {arrow!r} has zero width in {app.ui_font_family!r}",
+                    )
+                self.assertLess(ee_by_text["←"].winfo_x(), ee_by_text["→"].winfo_x())
+                self.assertLess(ee_by_text["↑"].winfo_y(), ee_by_text["↓"].winfo_y())
             finally:
                 app.close_eagle_eye()
 
